@@ -4,10 +4,10 @@ import time
 
 class UserModel(BaseModel):
     """
-    Model untuk tabel users
+    Model untuk tabel adm_user
     Menyimpan data user termasuk DANA OAuth tokens
     """
-    table_name = "users"
+    table_name = "adm_user"
 
     def create(self, data):
         """
@@ -21,19 +21,19 @@ class UserModel(BaseModel):
         with self.conn.cursor() as cursor:
             sql = f"""
                 INSERT INTO {self.table_name}
-                (ip_address, username, email, password, full_name, tipe, handphone,
-                 muzaki_id, dana_access_token, dana_refresh_token, dana_token_expires_at,
-                 dana_external_id, dana_user_id, dana_linked_at, created_on, active)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                (email, password, full_name, tipe, handphone, muzaki_id,
+                 dana_access_token, dana_refresh_token, dana_token_expires_at,
+                 dana_external_id, dana_user_id, dana_linked_at, external_id,
+                 is_active, created_date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
             """
             cursor.execute(sql, (
-                data.get('ip_address', '0.0.0.0'),
-                data.get('username', email),
                 email,
                 data.get('password', ''),
-                data.get('full_name', data.get('name', '')),
+                data.get('full_name', data.get('name', data.get('nama', ''))),
                 data.get('tipe', 'user'),
-                data.get('handphone', ''),
+                data.get('handphone', data.get('no_hp', '')),
                 data.get('muzaki_id'),
                 data.get('dana_access_token'),
                 data.get('dana_refresh_token'),
@@ -41,11 +41,13 @@ class UserModel(BaseModel):
                 data.get('dana_external_id'),
                 data.get('dana_user_id'),
                 data.get('dana_linked_at'),
-                int(time.time()),  # created_on sebagai unix timestamp
-                1  # active
+                data.get('external_id'),
+                'Y',
+                datetime.now()
             ))
+            result = cursor.fetchone()
             self.conn.commit()
-            return cursor.lastrowid
+            return result['id'] if result else None
 
     def findById(self, userId):
         """
@@ -82,6 +84,25 @@ class UserModel(BaseModel):
             sql = f"SELECT * FROM {self.table_name} WHERE dana_external_id = %s"
             cursor.execute(sql, (externalId,))
             return cursor.fetchone()
+
+    def findByPhone(self, phone):
+        """
+        Cari user berdasarkan nomor HP
+        """
+        with self.conn.cursor() as cursor:
+            sql = f"SELECT * FROM {self.table_name} WHERE handphone = %s"
+            cursor.execute(sql, (phone,))
+            return cursor.fetchone()
+
+    def updateExternalId(self, userId, externalId):
+        """
+        Update external_id untuk user
+        """
+        with self.conn.cursor() as cursor:
+            sql = f"UPDATE {self.table_name} SET external_id = %s, updated_date = %s WHERE id = %s"
+            cursor.execute(sql, (externalId, datetime.now(), userId))
+            self.conn.commit()
+            return cursor.rowcount > 0
 
     def exists(self, email, tipe):
         """
