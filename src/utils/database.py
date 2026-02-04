@@ -1,27 +1,65 @@
-import pymysql
+import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from src.config.config import Config
 
 class Database:
     def __init__(self):
-        self.host = Config.DB_HOST
-        self.user = Config.DB_USER
-        self.password = Config.DB_PASS
-        self.dbName = Config.DB_NAME
+        self.database_url = Config.get_database_url()
 
     def getConnection(self):
         try:
-            return pymysql.connect(
-                host=self.host,
-                user=self.user,
-                password=self.password,
-                database=self.dbName,
-                cursorclass=pymysql.cursors.DictCursor,
-                connect_timeout=5
+            if not self.database_url:
+                raise Exception("DATABASE_URL is not set")
+
+            return psycopg2.connect(
+                self.database_url,
+                cursor_factory=RealDictCursor,
+                connect_timeout=10
             )
         except Exception as e:
             print(f"Database Connection Error: {str(e)}")
-            print(f"Details: host={self.host}, user={self.user}, db={self.dbName}")
             raise e
 
-# Singleton instance idea or just class usage
+    def execute_query(self, query, params=None, fetch=True):
+        """Helper method untuk execute query"""
+        conn = None
+        try:
+            conn = self.getConnection()
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+
+            if fetch:
+                result = cursor.fetchall()
+            else:
+                conn.commit()
+                result = cursor.rowcount
+
+            cursor.close()
+            return result
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            raise e
+        finally:
+            if conn:
+                conn.close()
+
+    def execute_one(self, query, params=None):
+        """Helper method untuk fetch single row"""
+        conn = None
+        try:
+            conn = self.getConnection()
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            result = cursor.fetchone()
+            cursor.close()
+            return result
+        except Exception as e:
+            raise e
+        finally:
+            if conn:
+                conn.close()
+
+# Singleton instance
 db = Database()

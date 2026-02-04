@@ -5,12 +5,24 @@ load_dotenv()
 
 class Config:
     # ==========================================================================
-    # DATABASE CONFIGURATION
+    # DATABASE CONFIGURATION (PostgreSQL - Neon)
     # ==========================================================================
-    DB_HOST = os.getenv('DB_HOST', 'mysql')
-    DB_USER = os.getenv('DB_USER', 'user')
-    DB_PASS = os.getenv('DB_PASS', 'password')
-    DB_NAME = os.getenv('DB_NAME', 'cinta_zakat_db')
+    # Gunakan DATABASE_URL untuk PostgreSQL (Neon/Vercel Postgres)
+    DATABASE_URL = os.getenv('DATABASE_URL', '')
+
+    # Fix untuk SQLAlchemy - ganti postgres:// dengan postgresql://
+    @staticmethod
+    def get_database_url():
+        uri = os.getenv('DATABASE_URL', '')
+        if uri and uri.startswith("postgres://"):
+            uri = uri.replace("postgres://", "postgresql://", 1)
+        return uri
+
+    # Legacy MySQL config (deprecated, gunakan DATABASE_URL)
+    DB_HOST = os.getenv('DB_HOST', '')
+    DB_USER = os.getenv('DB_USER', '')
+    DB_PASS = os.getenv('DB_PASS', '')
+    DB_NAME = os.getenv('DB_NAME', '')
 
     # ==========================================================================
     # APPLICATION CONFIGURATION

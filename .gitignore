@@ -1,5 +1,40 @@
-Miniconda3-latest-MacOSX-x86_64.sh
+# Python
 venv/
 __pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Environment
 .env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
+server.log
+
+# Large files
+Miniconda3-latest-MacOSX-x86_64.sh
+
+# Vercel
+.vercel/
+
+# Secrets
+secrets.yaml
+*.pem
+*.key
