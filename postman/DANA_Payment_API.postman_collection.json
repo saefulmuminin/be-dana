@@ -1,0 +1,650 @@
+{
+	"info": {
+		"_postman_id": "dana-payment-api-collection",
+		"name": "DANA Payment API - Cinta Zakat",
+		"description": "Collection untuk testing API pembayaran DANA Mini App Cinta Zakat",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "https://be-dana.vercel.app",
+			"type": "string"
+		},
+		{
+			"key": "jwt_token",
+			"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJtdXpha2lfaWQiOjEsInR5cGUiOiJ1c2VyIiwiZXhwIjoxNzcwMjc1MTMyfQ.oCUKWxgBl_fPy41YPGbboT1L5rcFnXjPMT0voOKOo8o",
+			"type": "string"
+		},
+		{
+			"key": "dana_access_token",
+			"value": "GET_FROM_APPLY_TOKEN_API",
+			"type": "string"
+		},
+		{
+			"key": "dana_refresh_token",
+			"value": "GET_FROM_APPLY_TOKEN_API",
+			"type": "string"
+		},
+		{
+			"key": "order_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "external_id",
+			"value": "user_test_001",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Health Check",
+			"item": [
+				{
+					"name": "1. Root Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/",
+							"host": ["{{base_url}}"],
+							"path": [""]
+						},
+						"description": "Check kesehatan API dan koneksi database"
+					},
+					"response": []
+				},
+				{
+					"name": "2. Simple Health (No DB)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/health",
+							"host": ["{{base_url}}"],
+							"path": ["api", "health"]
+						},
+						"description": "Health check sederhana tanpa cek database"
+					},
+					"response": []
+				},
+				{
+					"name": "3. Auth Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/health",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "health"]
+						},
+						"description": "Health check endpoint auth"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Authentication (DANA OAuth)",
+			"item": [
+				{
+					"name": "1. Generate OAuth URL",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.data && jsonData.data.oauth_url) {",
+									"    console.log('OAuth URL:', jsonData.data.oauth_url);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"redirect_url\": \"{{base_url}}/api/v1/auth/finish-redirect\",\n    \"mobile_number\": \"081234567890\",\n    \"external_id\": \"{{external_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/generate-oauth-url",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "generate-oauth-url"]
+						},
+						"description": "Generate URL untuk OAuth login ke DANA. User akan redirect ke URL ini untuk login."
+					},
+					"response": []
+				},
+				{
+					"name": "2. Apply Token (Exchange Auth Code)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.data) {",
+									"    if (jsonData.data.access_token) {",
+									"        pm.collectionVariables.set('dana_access_token', jsonData.data.access_token);",
+									"    }",
+									"    if (jsonData.data.refresh_token) {",
+									"        pm.collectionVariables.set('dana_refresh_token', jsonData.data.refresh_token);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"auth_code\": \"AUTH_CODE_DARI_REDIRECT\",\n    \"external_id\": \"{{external_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/apply-token",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "apply-token"]
+						},
+						"description": "Tukar auth_code dari DANA redirect menjadi access_token dan refresh_token"
+					},
+					"response": []
+				},
+				{
+					"name": "3. Seamless Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.data && jsonData.data.token) {",
+									"    pm.collectionVariables.set('jwt_token', jsonData.data.token);",
+									"    console.log('JWT Token saved!');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"access_token\": \"{{dana_access_token}}\",\n    \"refresh_token\": \"{{dana_refresh_token}}\",\n    \"expires_in\": 94608000,\n    \"external_id\": \"{{external_id}}\",\n    \"user_info\": {\n        \"name\": \"Test User\",\n        \"phone\": \"081234567890\",\n        \"email\": \"testuser@example.com\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/seamless-login",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "seamless-login"]
+						},
+						"description": "Login ke sistem setelah mendapat token dari DANA. Response berisi JWT token untuk auth selanjutnya."
+					},
+					"response": []
+				},
+				{
+					"name": "4. Refresh Token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.data && jsonData.data.access_token) {",
+									"    pm.collectionVariables.set('dana_access_token', jsonData.data.access_token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"refresh_token\": \"{{dana_refresh_token}}\",\n    \"external_id\": \"{{external_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/refresh-token",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "refresh-token"]
+						},
+						"description": "Refresh access token yang expired menggunakan refresh token"
+					},
+					"response": []
+				},
+				{
+					"name": "5. Finish Redirect (Callback)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/finish-redirect?authCode=AUTH_CODE&externalId={{external_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "finish-redirect"],
+							"query": [
+								{
+									"key": "authCode",
+									"value": "AUTH_CODE"
+								},
+								{
+									"key": "externalId",
+									"value": "{{external_id}}"
+								}
+							]
+						},
+						"description": "Endpoint callback setelah user selesai OAuth di DANA"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "DANA Payment",
+			"item": [
+				{
+					"name": "1. Create Order (Buat Transaksi)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"if (jsonData.data && jsonData.data.order_id) {",
+									"    pm.collectionVariables.set('order_id', jsonData.data.order_id);",
+									"    console.log('Order ID:', jsonData.data.order_id);",
+									"}",
+									"if (jsonData.data && jsonData.data.web_redirect_url) {",
+									"    console.log('Redirect URL:', jsonData.data.web_redirect_url);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"access_token\": \"{{dana_access_token}}\",\n    \"nominal\": 50000,\n    \"email\": \"donor@example.com\",\n    \"campaign_id\": 1,\n    \"nama_lengkap\": \"John Doe\",\n    \"doa_muzaki\": \"Semoga bermanfaat untuk umat\",\n    \"tipe_zakat\": \"infak\",\n    \"hamba_allah\": \"N\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/create-order",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "create-order"]
+						},
+						"description": "Buat order pembayaran donasi. Response berisi order_id dan web_redirect_url untuk pembayaran."
+					},
+					"response": []
+				},
+				{
+					"name": "2. Apply OTT (One-Time Token)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"access_token\": \"{{dana_access_token}}\",\n    \"order_id\": \"{{order_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/apply-ott",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "apply-ott"]
+						},
+						"description": "Dapatkan One-Time Token untuk proses pembayaran"
+					},
+					"response": []
+				},
+				{
+					"name": "3. Query Payment Status",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/query-payment/{{order_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "query-payment", "{{order_id}}"]
+						},
+						"description": "Cek status pembayaran berdasarkan order_id"
+					},
+					"response": []
+				},
+				{
+					"name": "4. Cancel Order",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"order_id\": \"{{order_id}}\",\n    \"reason\": \"User membatalkan transaksi\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/cancel-order",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "cancel-order"]
+						},
+						"description": "Batalkan order yang belum dibayar"
+					},
+					"response": []
+				},
+				{
+					"name": "5. Finish Payment (Callback)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/finish-payment?orderId={{order_id}}&status=SUCCESS",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "finish-payment"],
+							"query": [
+								{
+									"key": "orderId",
+									"value": "{{order_id}}"
+								},
+								{
+									"key": "status",
+									"value": "SUCCESS"
+								}
+							]
+						},
+						"description": "Callback endpoint setelah user selesai bayar di DANA"
+					},
+					"response": []
+				},
+				{
+					"name": "6. Webhook (DANA Notification)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-SIGNATURE",
+								"value": "signature_from_dana"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"partnerReferenceNo\": \"{{order_id}}\",\n    \"referenceNo\": \"DANA_REF_123\",\n    \"amount\": {\n        \"value\": \"50000.00\",\n        \"currency\": \"IDR\"\n    },\n    \"additionalInfo\": {\n        \"status\": \"SUCCESS\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/webhook",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "webhook"]
+						},
+						"description": "Endpoint untuk menerima notifikasi pembayaran dari DANA server"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "User Profile",
+			"item": [
+				{
+					"name": "1. Get Profile",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/user/profile",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "user", "profile"]
+						},
+						"description": "Ambil data profile user yang sedang login"
+					},
+					"response": []
+				},
+				{
+					"name": "2. Update Profile",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"nama\": \"John Doe Updated\",\n    \"handphone\": \"081234567890\",\n    \"alamat\": \"Jl. Test No. 123\",\n    \"tgl_lahir\": \"1990-01-01\",\n    \"jenis_kelamin\": \"pria\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/user/profile",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "user", "profile"]
+						},
+						"description": "Update data profile user"
+					},
+					"response": []
+				},
+				{
+					"name": "3. Transaction History",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/user/transaction-history?limit=50&offset=0",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "user", "transaction-history"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "50"
+								},
+								{
+									"key": "offset",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Ambil riwayat transaksi user"
+					},
+					"response": []
+				},
+				{
+					"name": "4. Transaction Detail",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/user/transaction-detail/{{order_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "user", "transaction-detail", "{{order_id}}"]
+						},
+						"description": "Ambil detail transaksi berdasarkan ID"
+					},
+					"response": []
+				},
+				{
+					"name": "5. Send History Email",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/user/send-history-email",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "user", "send-history-email"]
+						},
+						"description": "Kirim riwayat transaksi ke email"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Disburse",
+			"item": [
+				{
+					"name": "Disburse Notify (Webhook)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"referenceNo\": \"DISB_REF_123\",\n    \"status\": \"SUCCESS\",\n    \"amount\": 100000\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/disburse/notify",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "disburse", "notify"]
+						},
+						"description": "Webhook untuk notifikasi disbursement dari DANA"
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
