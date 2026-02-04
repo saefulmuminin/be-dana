@@ -226,13 +226,15 @@ class DanaAuthService:
 
             self.logApiCall(url, 'POST', requestBody, response.status_code, result)
 
-            if response.status_code == 200:
+            if response.status_code == 200 and result.get('webRedirectUrl'):
                 return Response.success(data={
                     "oauthUrl": result.get('webRedirectUrl'),
                     "externalId": externalId
                 }, message="OAuth URL berhasil digenerate")
             else:
-                return Response.error(f"DANA Error: {result.get('responseMessage')}", 400)
+                # Return full DANA response for debugging
+                error_msg = result.get('responseMessage') or result.get('message') or json.dumps(result)
+                return Response.error(f"DANA Error [{response.status_code}]: {error_msg}", 400)
 
         except Exception as e:
             return Response.error(f"Request failed: {str(e)}", 500)
