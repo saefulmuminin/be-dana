@@ -1,16 +1,16 @@
-import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from src.config.config import Config
 
 class Database:
     def __init__(self):
-        self.database_url = Config.get_database_url()
+        # Gunakan SQLALCHEMY_DATABASE_URI dari Config
+        self.database_url = Config.SQLALCHEMY_DATABASE_URI
 
     def getConnection(self):
         try:
-            if not self.database_url:
-                raise Exception("DATABASE_URL is not set")
+            if not self.database_url or self.database_url.startswith("sqlite"):
+                raise Exception("PostgreSQL DATABASE_URL is not set")
 
             return psycopg2.connect(
                 self.database_url,

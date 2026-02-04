@@ -6,7 +6,15 @@ class BaseModel:
     table_name = ""
 
     def __init__(self):
-        self.conn = db.getConnection()
+        # Lazy connection - jangan connect saat init
+        self._conn = None
+
+    @property
+    def conn(self):
+        """Lazy database connection - hanya connect saat dibutuhkan"""
+        if self._conn is None:
+            self._conn = db.getConnection()
+        return self._conn
 
     def generateUuid(self):
         return str(uuid.uuid4())
@@ -28,4 +36,6 @@ class BaseModel:
             return cursor.rowcount > 0
 
     def close(self):
-        self.conn.close()
+        if self._conn:
+            self._conn.close()
+            self._conn = None
