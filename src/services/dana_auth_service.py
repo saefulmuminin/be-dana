@@ -1,15 +1,15 @@
 """
-DANA OAuth Authentication Service
-Menggunakan library resmi dana-python untuk Widget Binding (Seamless Login)
+DANA Mini Program Authentication Service
+Untuk integrasi Seamless Login di DANA Mini App
 
-Flow DANA Widget Binding:
-1. Generate OAuth URL -> User redirect ke DANA
-2. User login di DANA -> Redirect back dengan auth_code
-3. Apply Token (exchange auth_code -> access_token)
-4. Gunakan access_token untuk transaksi
+Flow Mini Program:
+1. Mini app call my.getAuthCode() -> dapat authCode dari DANA SDK
+2. Mini app kirim authCode ke backend
+3. Backend simpan session dan return JWT token
+4. User sudah login
 
-Dokumentasi: https://dashboard.dana.id/api-docs
-Library: pip install dana-python
+Catatan: Untuk Mini Program, exchange token dilakukan di DANA SDK side,
+backend hanya perlu menerima dan menyimpan data user.
 """
 
 from src.models.user_model import UserModel
@@ -19,68 +19,26 @@ from src.config.config import Config
 from datetime import datetime
 import json
 import uuid
-import urllib.parse
-
-# Import DANA official library
-try:
-    from dana.ipg import v1 as dana_ipg
-    DANA_SDK_AVAILABLE = True
-except ImportError:
-    DANA_SDK_AVAILABLE = False
-    print("WARNING: dana-python library not installed. Run: pip install dana-python")
+import jwt
 
 
 class DanaAuthService:
     """
-    DANA OAuth Authentication Service untuk Widget Binding
+    DANA Mini Program Authentication Service
     """
 
     def __init__(self):
         self.userModel = UserModel()
         self.db = Database()
-
-        # DANA Credentials
-        self.partnerId = Config.DANA_CLIENT_ID  # X_PARTNER_ID
-        self.merchantId = Config.DANA_MERCHANT_ID
-        self.channelId = getattr(Config, 'DANA_CHANNEL_ID', 'channel_id')
-        self.clientSecret = Config.DANA_CLIENT_SECRET
-        self.privateKey = getattr(Config, 'DANA_PRIVATE_KEY', None)
-        self.privateKeyPath = getattr(Config, 'DANA_PRIVATE_KEY_PATH', None)
-        self.origin = getattr(Config, 'DANA_ORIGIN', 'https://cintazakat.id')
-        self.env = getattr(Config, 'DANA_ENV', 'sandbox')
-
-        # URLs
-        self.baseUrl = Config.DANA_BASE_URL
-        self.oauthUrl = f"{self.baseUrl}/v1.0/get-auth-url"
-        self.tokenUrl = f"{self.baseUrl}/v1.0/access-token/b2b2c"
-
-    def _initDanaClient(self):
-        """Initialize DANA SDK environment"""
-        if not DANA_SDK_AVAILABLE:
-            return False
-
-        import os
-        os.environ['X_PARTNER_ID'] = self.partnerId
-        os.environ['MERCHANT_ID'] = self.merchantId
-        os.environ['CHANNEL_ID'] = self.channelId
-        os.environ['ORIGIN'] = self.origin
-        os.environ['ENV'] = self.env
-
-        if self.privateKey:
-            os.environ['PRIVATE_KEY'] = self.privateKey
-        elif self.privateKeyPath:
-            os.environ['PRIVATE_KEY_PATH'] = self.privateKeyPath
-
-        return True
+        self.jwtSecret = Config.JWT_SECRET
+        self.jwtExpireHours = Config.JWT_EXPIRE_HOURS
 
     def logApiCall(self, endpoint, method, requestBody, responseStatus, responseBody, error=None):
         """Log API call ke database"""
         try:
             conn = self.db.getConnection()
             with conn.cursor() as cursor:
-                # Mask sensitive data
                 safeRequest = self._maskSensitiveData(requestBody)
-
                 sql = """
                     INSERT INTO log_api
                     (name, aplikasi, url_api, parameter, response, created_date, created_by, is_active, is_delete)
@@ -88,7 +46,7 @@ class DanaAuthService:
                 """
                 cursor.execute(sql, (
                     f"DANA_AUTH_{method}",
-                    'DANA_WIDGET',
+                    'DANA_MINIAPP',
                     endpoint,
                     json.dumps(safeRequest) if safeRequest else None,
                     json.dumps(responseBody) if responseBody else str(error),
@@ -103,374 +61,183 @@ class DanaAuthService:
         """Mask sensitive data untuk logging"""
         if not data or not isinstance(data, dict):
             return data
-
         masked = data.copy()
-        for key in ['code', 'authCode', 'accessToken', 'refreshToken', 'privateKey']:
+        for key in ['auth_code', 'authCode', 'accessToken', 'refreshToken', 'token']:
             if key in masked and masked[key]:
                 value = str(masked[key])
                 masked[key] = value[:8] + '***' if len(value) > 8 else '***'
         return masked
 
-    def generateOauthUrl(self, data):
-        """
-        Generate OAuth URL untuk DANA Widget Binding
-
-        User akan di-redirect ke URL ini untuk login/authorize di DANA
-
-        Args:
-            data: {
-                redirect_url: URL callback setelah user selesai di DANA
-                mobile_number: Nomor HP user untuk seamless (optional)
-                external_id: Tracking ID (optional)
-                scopes: OAuth scopes (optional)
-            }
-
-        Returns:
-            {
-                oauthUrl: URL untuk redirect user
-                externalId: ID untuk tracking
-            }
-        """
-        try:
-            externalId = data.get('external_id') or str(uuid.uuid4())
-            redirectUrl = data.get('redirect_url')
-            mobileNumber = data.get('mobile_number')
-
-            if not redirectUrl:
-                return Response.error("Redirect URL wajib diisi", 400)
-
-            if DANA_SDK_AVAILABLE:
-                return self._generateOauthUrlWithSDK(externalId, redirectUrl, mobileNumber)
-            else:
-                return self._generateOauthUrlFallback(externalId, redirectUrl, mobileNumber)
-
-        except Exception as e:
-            return Response.error(f"Gagal generate OAuth URL: {str(e)}", 500)
-
-    def _generateOauthUrlWithSDK(self, externalId, redirectUrl, mobileNumber=None):
-        """Generate OAuth URL menggunakan DANA SDK"""
-        try:
-            self._initDanaClient()
-
-            request_data = {
-                "merchantId": self.merchantId,
-                "externalId": externalId,
-                "redirectUrl": redirectUrl,
-                "scopes": "QUERY_BALANCE,CASHOUT,MINI_DANA"
-            }
-
-            if mobileNumber:
-                request_data["seamlessData"] = {
-                    "mobileNumber": mobileNumber
-                }
-
-            response = dana_ipg.get_auth_url(request_data)
-
-            self.logApiCall('dana_ipg.get_auth_url', 'POST', request_data, 200, response)
-
-            if response.get('responseCode') in ['2007300', '00']:
-                return Response.success(data={
-                    "oauthUrl": response.get('webRedirectUrl'),
-                    "externalId": externalId
-                }, message="OAuth URL berhasil digenerate")
-            else:
-                return Response.error(
-                    f"DANA Error: {response.get('responseMessage')}",
-                    400
-                )
-
-        except Exception as e:
-            return Response.error(f"DANA SDK Error: {str(e)}", 500)
-
-    def _generateOauthUrlFallback(self, externalId, redirectUrl, mobileNumber=None):
-        """Generate OAuth URL tanpa SDK (manual build URL)"""
-        import requests
-        import hmac
-        from hashlib import sha256
-
-        timestamp = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z')
-
-        requestBody = {
-            "merchantId": self.merchantId,
-            "externalId": externalId,
-            "redirectUrl": redirectUrl,
-            "scopes": "QUERY_BALANCE,CASHOUT,MINI_DANA"
-        }
-
-        if mobileNumber:
-            requestBody["seamlessData"] = {"mobileNumber": mobileNumber}
-
-        bodyStr = json.dumps(requestBody, separators=(',', ':'), sort_keys=True)
-        path = "/v1.0/get-auth-url"
-        stringToSign = f"{timestamp}POST{path}{bodyStr}"
-        signature = hmac.new(
-            self.clientSecret.encode(),
-            stringToSign.encode(),
-            sha256
-        ).hexdigest()
-
-        headers = {
-            "Content-Type": "application/json",
-            "X-PARTNER-ID": self.partnerId,
-            "X-SIGNATURE": signature,
-            "X-TIMESTAMP": timestamp,
-            "CHANNEL-ID": self.channelId,
-            "X-EXTERNAL-ID": externalId
-        }
-
-        url = f"{self.baseUrl}{path}"
-
-        try:
-            response = requests.post(url, json=requestBody, headers=headers, timeout=30)
-            result = response.json() if response.text else {}
-
-            self.logApiCall(url, 'POST', requestBody, response.status_code, result)
-
-            if response.status_code == 200 and result.get('webRedirectUrl'):
-                return Response.success(data={
-                    "oauthUrl": result.get('webRedirectUrl'),
-                    "externalId": externalId
-                }, message="OAuth URL berhasil digenerate")
-            else:
-                # Return full DANA response for debugging
-                error_msg = result.get('responseMessage') or result.get('message') or json.dumps(result)
-                return Response.error(f"DANA Error [{response.status_code}]: {error_msg}", 400)
-
-        except Exception as e:
-            return Response.error(f"Request failed: {str(e)}", 500)
-
     def applyToken(self, data):
         """
-        Exchange authorization code untuk access token
+        Terima auth code dari Mini App dan buat session
 
-        Dipanggil setelah user selesai authorize di DANA dan redirect back
+        Untuk DANA Mini Program, auth code sudah di-exchange oleh SDK di mini app.
+        Backend hanya perlu menerima dan membuat session.
 
         Args:
             data: {
-                auth_code: Authorization code dari DANA callback
-                external_id: External ID dari step sebelumnya
-            }
-
-        Returns:
-            {
-                accessToken: Token untuk transaksi
-                refreshToken: Token untuk refresh
-                expiresIn: Masa berlaku dalam detik
+                auth_code: Auth code dari my.getAuthCode()
+                external_id: External ID untuk tracking
             }
         """
         try:
             authCode = data.get('auth_code')
-            externalId = data.get('external_id')
+            externalId = data.get('external_id') or str(uuid.uuid4())
 
             if not authCode:
-                return Response.error("Authorization code wajib diisi", 400)
-            if not externalId:
-                return Response.error("External ID wajib diisi", 400)
+                return Response.error("Auth code wajib diisi", 400)
 
-            if DANA_SDK_AVAILABLE:
-                return self._applyTokenWithSDK(authCode, externalId)
-            else:
-                return self._applyTokenFallback(authCode, externalId)
+            self.logApiCall('/apply-token', 'POST', data, 200, {'status': 'received'})
+
+            # Untuk Mini Program, kita return success dengan external_id
+            # Token akan di-generate di seamlessLogin
+            return Response.success(data={
+                "externalId": externalId,
+                "authCode": authCode[:10] + "...",  # Partial for confirmation
+                "message": "Auth code received, proceed to seamless login"
+            }, message="Auth code berhasil diterima")
 
         except Exception as e:
             return Response.error(f"Apply token gagal: {str(e)}", 500)
 
-    def _applyTokenWithSDK(self, authCode, externalId):
-        """Apply token menggunakan DANA SDK"""
-        try:
-            self._initDanaClient()
-
-            request_data = {
-                "grantType": "AUTHORIZATION_CODE",
-                "authCode": authCode,
-                "merchantId": self.merchantId
-            }
-
-            response = dana_ipg.apply_token(request_data)
-
-            # Log dengan masked data
-            self.logApiCall('dana_ipg.apply_token', 'POST',
-                           {'grantType': 'AUTHORIZATION_CODE', 'authCode': authCode[:8] + '***'},
-                           200, self._maskSensitiveData(response))
-
-            if response.get('responseCode') in ['2007400', '00']:
-                return Response.success(data={
-                    "accessToken": response.get('accessToken'),
-                    "refreshToken": response.get('refreshToken'),
-                    "expiresIn": response.get('accessTokenExpiryTime', 94608000),
-                    "tokenType": "Bearer",
-                    "externalId": externalId
-                }, message="Token berhasil didapatkan")
-            else:
-                return Response.error(
-                    f"DANA Error: {response.get('responseMessage')}",
-                    400
-                )
-
-        except Exception as e:
-            return Response.error(f"DANA SDK Error: {str(e)}", 500)
-
-    def _applyTokenFallback(self, authCode, externalId):
-        """Apply token tanpa SDK"""
-        import requests
-        import hmac
-        from hashlib import sha256
-
-        timestamp = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z')
-
-        requestBody = {
-            "grantType": "AUTHORIZATION_CODE",
-            "authCode": authCode,
-            "merchantId": self.merchantId
-        }
-
-        bodyStr = json.dumps(requestBody, separators=(',', ':'), sort_keys=True)
-        path = "/v1.0/access-token/b2b2c"
-        stringToSign = f"{timestamp}POST{path}{bodyStr}"
-        signature = hmac.new(
-            self.clientSecret.encode(),
-            stringToSign.encode(),
-            sha256
-        ).hexdigest()
-
-        headers = {
-            "Content-Type": "application/json",
-            "X-PARTNER-ID": self.partnerId,
-            "X-SIGNATURE": signature,
-            "X-TIMESTAMP": timestamp,
-            "CHANNEL-ID": self.channelId,
-            "X-EXTERNAL-ID": externalId
-        }
-
-        url = f"{self.baseUrl}{path}"
-
-        try:
-            response = requests.post(url, json=requestBody, headers=headers, timeout=30)
-            result = response.json() if response.text else {}
-
-            self.logApiCall(url, 'POST',
-                           {'grantType': 'AUTHORIZATION_CODE'},
-                           response.status_code,
-                           self._maskSensitiveData(result))
-
-            if response.status_code == 200:
-                return Response.success(data={
-                    "accessToken": result.get('accessToken'),
-                    "refreshToken": result.get('refreshToken'),
-                    "expiresIn": result.get('accessTokenExpiryTime', 94608000),
-                    "tokenType": "Bearer",
-                    "externalId": externalId
-                }, message="Token berhasil didapatkan")
-            else:
-                return Response.error(f"DANA Error: {result.get('responseMessage')}", 400)
-
-        except Exception as e:
-            return Response.error(f"Request failed: {str(e)}", 500)
-
-    def refreshToken(self, data):
+    def seamlessLogin(self, data):
         """
-        Refresh expired access token
+        Seamless Login - Buat atau update user dan generate JWT
 
         Args:
             data: {
-                refresh_token: Refresh token dari sebelumnya
+                external_id: External ID
+                access_token: DANA access token (dari mini app)
+                user_info: { name, phone, email } (optional, dari my.getOpenUserInfo)
             }
         """
         try:
-            refreshTokenValue = data.get('refresh_token')
+            externalId = data.get('external_id') or str(uuid.uuid4())
+            userInfo = data.get('user_info') or {}
 
-            if not refreshTokenValue:
-                return Response.error("Refresh token wajib diisi", 400)
+            # Get or create user
+            user = self._getOrCreateUser(externalId, userInfo)
 
-            if DANA_SDK_AVAILABLE:
-                return self._refreshTokenWithSDK(refreshTokenValue)
+            if not user:
+                return Response.error("Gagal membuat user", 500)
+
+            # Generate JWT token
+            jwtToken = self._generateJwt(user)
+
+            self.logApiCall('/seamless-login', 'POST',
+                           {'external_id': externalId}, 200,
+                           {'user_id': user.get('id')})
+
+            return Response.success(data={
+                "token": jwtToken,
+                "user": {
+                    "id": user.get('id'),
+                    "name": user.get('nama') or user.get('nama_lengkap'),
+                    "email": user.get('email'),
+                    "phone": user.get('no_hp') or user.get('handphone'),
+                    "external_id": externalId
+                },
+                "externalId": externalId
+            }, message="Login berhasil")
+
+        except Exception as e:
+            return Response.error(f"Seamless login gagal: {str(e)}", 500)
+
+    def _getOrCreateUser(self, externalId, userInfo):
+        """Get existing user atau create baru"""
+        try:
+            # Cari user berdasarkan external_id atau email
+            email = userInfo.get('email')
+            phone = userInfo.get('phone')
+
+            user = None
+
+            if email:
+                user = self.userModel.findByEmail(email)
+
+            if not user and phone:
+                user = self.userModel.findByPhone(phone)
+
+            if not user:
+                # Create new user
+                userData = {
+                    'nama': userInfo.get('name', f'User_{externalId[:8]}'),
+                    'email': email or f'{externalId}@dana.miniapp',
+                    'no_hp': phone,
+                    'external_id': externalId,
+                    'created_date': datetime.now(),
+                    'is_active': 'Y'
+                }
+                userId = self.userModel.create(userData)
+                user = self.userModel.findById(userId)
             else:
-                return self._refreshTokenFallback(refreshTokenValue)
+                # Update external_id jika belum ada
+                if not user.get('external_id'):
+                    self.userModel.updateExternalId(user['id'], externalId)
+
+            return user
+
+        except Exception as e:
+            print(f"Get/Create user error: {str(e)}")
+            return None
+
+    def _generateJwt(self, user):
+        """Generate JWT token untuk user"""
+        from datetime import timedelta
+
+        payload = {
+            'user_id': user.get('id'),
+            'email': user.get('email'),
+            'muzaki_id': user.get('muzaki_id'),
+            'type': 'user',
+            'exp': datetime.utcnow() + timedelta(hours=self.jwtExpireHours)
+        }
+
+        return jwt.encode(payload, self.jwtSecret, algorithm='HS256')
+
+    def refreshToken(self, data):
+        """Refresh expired token"""
+        try:
+            oldToken = data.get('token') or data.get('refresh_token')
+
+            if not oldToken:
+                return Response.error("Token wajib diisi", 400)
+
+            try:
+                # Decode without verification to get user_id
+                payload = jwt.decode(oldToken, self.jwtSecret, algorithms=['HS256'],
+                                    options={"verify_exp": False})
+                userId = payload.get('user_id')
+
+                user = self.userModel.findById(userId)
+                if not user:
+                    return Response.error("User tidak ditemukan", 404)
+
+                # Generate new token
+                newToken = self._generateJwt(user)
+
+                return Response.success(data={
+                    "token": newToken,
+                    "expiresIn": self.jwtExpireHours * 3600
+                }, message="Token berhasil di-refresh")
+
+            except jwt.InvalidTokenError:
+                return Response.error("Token tidak valid", 401)
 
         except Exception as e:
             return Response.error(f"Refresh token gagal: {str(e)}", 500)
 
-    def _refreshTokenWithSDK(self, refreshTokenValue):
-        """Refresh token menggunakan SDK"""
-        try:
-            self._initDanaClient()
-
-            request_data = {
-                "grantType": "REFRESH_TOKEN",
-                "refreshToken": refreshTokenValue,
-                "merchantId": self.merchantId
-            }
-
-            response = dana_ipg.apply_token(request_data)
-
-            if response.get('responseCode') in ['2007400', '00']:
-                return Response.success(data={
-                    "accessToken": response.get('accessToken'),
-                    "refreshToken": response.get('refreshToken'),
-                    "expiresIn": response.get('accessTokenExpiryTime', 94608000),
-                    "tokenType": "Bearer"
-                }, message="Token berhasil di-refresh")
-            else:
-                return Response.error(f"DANA Error: {response.get('responseMessage')}", 400)
-
-        except Exception as e:
-            return Response.error(f"DANA SDK Error: {str(e)}", 500)
-
-    def _refreshTokenFallback(self, refreshTokenValue):
-        """Refresh token tanpa SDK"""
-        import requests
-        import hmac
-        from hashlib import sha256
-
-        timestamp = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z')
-        externalId = str(uuid.uuid4())
-
-        requestBody = {
-            "grantType": "REFRESH_TOKEN",
-            "refreshToken": refreshTokenValue,
-            "merchantId": self.merchantId
-        }
-
-        bodyStr = json.dumps(requestBody, separators=(',', ':'), sort_keys=True)
-        path = "/v1.0/access-token/b2b2c"
-        stringToSign = f"{timestamp}POST{path}{bodyStr}"
-        signature = hmac.new(
-            self.clientSecret.encode(),
-            stringToSign.encode(),
-            sha256
-        ).hexdigest()
-
-        headers = {
-            "Content-Type": "application/json",
-            "X-PARTNER-ID": self.partnerId,
-            "X-SIGNATURE": signature,
-            "X-TIMESTAMP": timestamp,
-            "CHANNEL-ID": self.channelId,
-            "X-EXTERNAL-ID": externalId
-        }
-
-        url = f"{self.baseUrl}{path}"
-
-        try:
-            response = requests.post(url, json=requestBody, headers=headers, timeout=30)
-            result = response.json() if response.text else {}
-
-            if response.status_code == 200:
-                return Response.success(data={
-                    "accessToken": result.get('accessToken'),
-                    "refreshToken": result.get('refreshToken'),
-                    "expiresIn": result.get('accessTokenExpiryTime', 94608000),
-                    "tokenType": "Bearer"
-                }, message="Token berhasil di-refresh")
-            else:
-                return Response.error(f"DANA Error: {result.get('responseMessage')}", 400)
-
-        except Exception as e:
-            return Response.error(f"Request failed: {str(e)}", 500)
+    def generateOauthUrl(self, data):
+        """
+        Generate OAuth URL - Tidak diperlukan untuk Mini Program
+        Mini Program menggunakan my.getAuthCode() langsung
+        """
+        return Response.success(data={
+            "message": "Untuk DANA Mini Program, gunakan my.getAuthCode() di mini app",
+            "note": "Backend tidak perlu generate OAuth URL"
+        }, message="Mini Program tidak memerlukan OAuth URL")
 
     def getUserInfo(self, accessToken):
-        """
-        Get user info dari DANA (balance, profile, dll)
-        """
-        # TODO: Implement if needed
-        return Response.success(data={}, message="Not implemented")
+        """Get user info - placeholder untuk compatibility"""
+        return Response.success(data={}, message="Use my.getOpenUserInfo() in mini app")

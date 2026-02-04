@@ -21,14 +21,14 @@ healthService = HealthService()
 
 
 # =============================================================================
-# AUTH ROUTES
+# AUTH ROUTES (Tidak perlu bearer token)
 # =============================================================================
 
 @auth_bp.route('/generate-oauth-url', methods=['POST'])
 def generateOauthUrl():
     """
-    Generate DANA OAuth URL untuk seamless login
-    Body: { redirect_url, mobile_number (optional), external_id (optional) }
+    Generate DANA OAuth URL
+    Catatan: Untuk Mini Program, tidak diperlukan - gunakan my.getAuthCode()
     """
     return danaAuthService.generateOauthUrl(request.json or {})
 
@@ -36,7 +36,8 @@ def generateOauthUrl():
 @auth_bp.route('/apply-token', methods=['POST'])
 def applyToken():
     """
-    Exchange auth code untuk access token
+    Terima auth code dari Mini App
+
     Body: { auth_code, external_id }
     """
     return danaAuthService.applyToken(request.json or {})
@@ -45,21 +46,26 @@ def applyToken():
 @auth_bp.route('/seamless-login', methods=['POST'])
 def seamlessLogin():
     """
-    Seamless login setelah mendapat token dari DANA
+    Seamless login setelah mendapat token dari DANA Mini App
+
     Body: {
-        access_token, refresh_token, expires_in,
-        external_id, user_info: { name, phone, email }
+        external_id,
+        access_token (optional),
+        user_info: { name, phone, email } (optional)
     }
     """
     data = request.json or {}
-    return authService.seamlessLogin(data)
+
+    # Gunakan DanaAuthService untuk Mini Program
+    return danaAuthService.seamlessLogin(data)
 
 
 @auth_bp.route('/refresh-token', methods=['POST'])
 def refreshToken():
     """
-    Refresh expired access token
-    Body: { refresh_token, external_id }
+    Refresh expired token
+
+    Body: { token } atau { refresh_token }
     """
     return danaAuthService.refreshToken(request.json or {})
 
@@ -69,7 +75,6 @@ def finishRedirect():
     """
     Callback endpoint setelah DANA OAuth redirect
     """
-    # Bisa handle query params dari GET atau body dari POST
     authCode = request.args.get('authCode') or (request.json or {}).get('authCode')
     externalId = request.args.get('externalId') or (request.json or {}).get('externalId')
 
@@ -96,57 +101,62 @@ def healthCheck():
 # =============================================================================
 
 @dana_bp.route('/create-order', methods=['POST'])
-@token_required
 def createOrder():
     """
-    Create payment order di DANA
-    Headers: Authorization: Bearer <token>
+    Create payment order untuk DANA Mini Program
+
     Body: {
-        access_token (DANA token),
         nominal, email, campaign_id,
         nama_lengkap, doa_muzaki, tipe_zakat, hamba_allah (optional)
     }
+
+    Returns: { orderId } untuk digunakan dengan my.tradePay()
     """
     data = request.json or {}
 
-    # Tambahkan user info dari JWT jika ada
-    if hasattr(g, 'current_user'):
-        data['created_by'] = f"user_{g.current_user.get('user_id')}"
-        if not data.get('email'):
-            data['email'] = g.current_user.get('email')
-        if not data.get('muzaki_id'):
-            data['muzaki_id'] = g.current_user.get('muzaki_id')
+    # Tambahkan user info dari JWT jika ada token
+    authHeader = request.headers.get('Authorization')
+    if authHeader and authHeader.startswith('Bearer '):
+        try:
+            import jwt
+            from src.config.config import Config
+            token = authHeader.split(' ')[1]
+            payload = jwt.decode(token, Config.JWT_SECRET, algorithms=['HS256'])
+            data['created_by'] = f"user_{payload.get('user_id')}"
+            if not data.get('email'):
+                data['email'] = payload.get('email')
+            if not data.get('muzaki_id'):
+                data['muzaki_id'] = payload.get('muzaki_id')
+        except:
+            pass  # Ignore token errors, proceed without user info
 
     return danaPaymentService.createOrder(data)
 
 
 @dana_bp.route('/apply-ott', methods=['POST'])
-@token_required
 def applyOtt():
     """
-    Apply OTT token untuk pembayaran
-    Headers: Authorization: Bearer <token>
-    Body: { access_token (DANA token), order_id }
+    Apply OTT token
+    Catatan: Tidak diperlukan untuk Mini Program, my.tradePay() langsung
+
+    Body: { order_id }
     """
     return danaPaymentService.applyOtt(request.json or {})
 
 
 @dana_bp.route('/query-payment/<orderId>', methods=['GET'])
-@token_required
 def queryPayment(orderId):
     """
-    Query status pembayaran dari DANA
-    Headers: Authorization: Bearer <token>
+    Query status pembayaran
     """
     return danaPaymentService.queryPayment(orderId)
 
 
 @dana_bp.route('/cancel-order', methods=['POST'])
-@token_required
 def cancelOrder():
     """
     Cancel order yang belum dibayar
-    Headers: Authorization: Bearer <token>
+
     Body: { order_id, reason (optional) }
     """
     data = request.json or {}
@@ -163,9 +173,9 @@ def cancelOrder():
 def webhook():
     """
     Webhook endpoint untuk menerima notifikasi dari DANA
-    Tidak perlu auth karena dipanggil oleh DANA server
+
+    DANA akan mengirim notifikasi saat status pembayaran berubah
     """
-    # Ambil signature dari header untuk validasi
     signature = request.headers.get('X-SIGNATURE')
     return danaPaymentService.webhook(request.json or {}, signature)
 
@@ -175,21 +185,21 @@ def finishPayment():
     """
     Callback setelah user selesai di halaman DANA
     """
-    orderId = request.args.get('orderId') or (request.json or {}).get('orderId')
-    status = request.args.get('status') or (request.json or {}).get('status')
-
-    return {
-        "status": "success",
-        "message": "Payment finished",
-        "data": {
-            "orderId": orderId,
-            "paymentStatus": status
+    data = {}
+    if request.method == 'GET':
+        data = {
+            'orderId': request.args.get('orderId'),
+            'resultCode': request.args.get('resultCode'),
+            'resultStatus': request.args.get('resultStatus')
         }
-    }, 200
+    else:
+        data = request.json or {}
+
+    return danaPaymentService.finishPayment(data)
 
 
 # =============================================================================
-# USER ROUTES
+# USER ROUTES (Perlu bearer token)
 # =============================================================================
 
 @user_bp.route('/profile', methods=['GET'])
@@ -199,7 +209,6 @@ def getProfile():
     Get user profile
     Headers: Authorization: Bearer <token>
     """
-    # Ambil user info dari JWT token (di-set oleh middleware)
     userId = g.current_user.get('user_id') if hasattr(g, 'current_user') else None
     muzakiId = g.current_user.get('muzaki_id') if hasattr(g, 'current_user') else None
     email = g.current_user.get('email') if hasattr(g, 'current_user') else None
