@@ -45,9 +45,11 @@ class Config:
     
     # Environment: 'sandbox' (testing) atau 'production'
     DANA_ENV = os.getenv("DANA_ENV", "sandbox")
-    DANA_BASE_URL = (
-        "https://api-sandbox.dana.id" if DANA_ENV == "sandbox" 
-        else "https://api-sandbox.dana.id"
+
+    # DANA Base URL - baca dari environment variable, atau gunakan default berdasarkan DANA_ENV
+    DANA_BASE_URL = os.getenv("DANA_BASE_URL") or (
+        "https://api.sandbox.dana.id" if DANA_ENV == "sandbox"
+        else "https://api.dana.id"
     )
 
     # Security Keys (Gunakan path atau string kunci langsung)
