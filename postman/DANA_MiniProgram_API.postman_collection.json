@@ -1,0 +1,536 @@
+{
+	"info": {
+		"_postman_id": "dana-miniprogram-api-v2",
+		"name": "DANA Mini Program API - Cinta Zakat",
+		"description": "Collection untuk testing API DANA Mini Program\n\nFlow:\n1. Health Check\n2. Apply Token (dari my.getAuthCode)\n3. Seamless Login (dapat JWT)\n4. Create Order (dapat orderId untuk my.tradePay)\n5. Query Payment Status\n\nCatatan: Tidak perlu Bearer Token untuk auth dan create-order",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "https://be-dana.vercel.app",
+			"type": "string"
+		},
+		{
+			"key": "jwt_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "external_id",
+			"value": "test_user_001",
+			"type": "string"
+		},
+		{
+			"key": "order_id",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "1. Health Check",
+			"item": [
+				{
+					"name": "Health Check",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has healthy status', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql('success');",
+									"    pm.expect(jsonData.data.status).to.eql('healthy');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/health",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "health"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "2. Authentication",
+			"item": [
+				{
+					"name": "Apply Token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has externalId', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql('success');",
+									"    pm.expect(jsonData.data.externalId).to.not.be.undefined;",
+									"    ",
+									"    // Save external_id",
+									"    pm.collectionVariables.set('external_id', jsonData.data.externalId);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"auth_code\": \"AUTH_CODE_FROM_MY_GET_AUTH_CODE\",\n    \"external_id\": \"{{external_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/apply-token",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "apply-token"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Seamless Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has JWT token', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql('success');",
+									"    pm.expect(jsonData.data.token).to.not.be.undefined;",
+									"    ",
+									"    // Save JWT token",
+									"    pm.collectionVariables.set('jwt_token', jsonData.data.token);",
+									"    ",
+									"    console.log('JWT Token saved:', jsonData.data.token.substring(0, 50) + '...');",
+									"    console.log('User:', jsonData.data.user);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"external_id\": \"{{external_id}}\",\n    \"user_info\": {\n        \"name\": \"Test User\",\n        \"email\": \"testuser@example.com\",\n        \"phone\": \"081234567890\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/seamless-login",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "seamless-login"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh Token",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"token\": \"{{jwt_token}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/refresh-token",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "refresh-token"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "3. Payment",
+			"item": [
+				{
+					"name": "Create Order",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has orderId', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.status).to.eql('success');",
+									"    pm.expect(jsonData.data.orderId).to.not.be.undefined;",
+									"    ",
+									"    // Save order_id",
+									"    pm.collectionVariables.set('order_id', jsonData.data.orderId);",
+									"    ",
+									"    console.log('Order ID:', jsonData.data.orderId);",
+									"    console.log('Amount:', jsonData.data.amount);",
+									"    console.log('Use this orderId with my.tradePay()');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"nominal\": 50000,\n    \"email\": \"donor@example.com\",\n    \"campaign_id\": \"1\",\n    \"nama_lengkap\": \"Donor Test\",\n    \"doa_muzaki\": \"Semoga berkah\",\n    \"tipe_zakat\": \"infak\",\n    \"hamba_allah\": \"N\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/create-order",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "create-order"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Order (Zakat)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"var jsonData = pm.response.json();",
+									"if (jsonData.status === 'success') {",
+									"    pm.collectionVariables.set('order_id', jsonData.data.orderId);",
+									"    console.log('Zakat Order ID:', jsonData.data.orderId);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"nominal\": 100000,\n    \"email\": \"muzaki@example.com\",\n    \"campaign_id\": \"2\",\n    \"nama_lengkap\": \"Muzaki Test\",\n    \"doa_muzaki\": \"Semoga menjadi zakat yang diterima\",\n    \"tipe_zakat\": \"zakat\",\n    \"hamba_allah\": \"N\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/create-order",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "create-order"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Order (Anonymous)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"nominal\": 25000,\n    \"email\": \"anonymous@example.com\",\n    \"campaign_id\": \"1\",\n    \"nama_lengkap\": \"Hamba Allah\",\n    \"tipe_zakat\": \"infak\",\n    \"hamba_allah\": \"Y\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/create-order",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "create-order"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Query Payment Status",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has order status', function () {",
+									"    var jsonData = pm.response.json();",
+									"    console.log('Order Status:', jsonData.data.status);",
+									"    console.log('Amount:', jsonData.data.amount);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/query-payment/{{order_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "query-payment", "{{order_id}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Order",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"order_id\": \"{{order_id}}\",\n    \"reason\": \"User cancelled\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/cancel-order",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "cancel-order"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Apply OTT (Optional)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"order_id\": \"{{order_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/apply-ott",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "apply-ott"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "4. Webhook (Server-side)",
+			"item": [
+				{
+					"name": "Webhook - Payment Success",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-SIGNATURE",
+								"value": "test_signature"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"merchantTransId\": \"{{order_id}}\",\n    \"partnerReferenceNo\": \"CINTA-20260204-TEST\",\n    \"referenceNo\": \"DANA-REF-12345\",\n    \"status\": \"SUCCESS\",\n    \"amount\": {\n        \"value\": \"50000.00\",\n        \"currency\": \"IDR\"\n    },\n    \"paidTime\": \"2026-02-04T10:00:00+07:00\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/webhook",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "webhook"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Webhook - Payment Failed",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"merchantTransId\": \"{{order_id}}\",\n    \"status\": \"FAILED\",\n    \"amount\": {\n        \"value\": \"50000.00\",\n        \"currency\": \"IDR\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/webhook",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "webhook"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Finish Payment Callback",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/finish-payment?orderId={{order_id}}&resultCode=9000&resultStatus=SUCCESS",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "finish-payment"],
+							"query": [
+								{
+									"key": "orderId",
+									"value": "{{order_id}}"
+								},
+								{
+									"key": "resultCode",
+									"value": "9000"
+								},
+								{
+									"key": "resultStatus",
+									"value": "SUCCESS"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "5. User (Requires JWT)",
+			"item": [
+				{
+					"name": "Get Profile",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/user/profile",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "user", "profile"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Profile",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"nama\": \"Updated Name\",\n    \"handphone\": \"081234567890\",\n    \"alamat\": \"Jl. Test No. 123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/user/profile",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "user", "profile"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Transaction History",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/user/transaction-history?limit=10&offset=0",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "user", "transaction-history"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "offset",
+									"value": "0"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
