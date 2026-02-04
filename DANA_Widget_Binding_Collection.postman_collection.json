@@ -1,0 +1,272 @@
+{
+  "info": {
+    "name": "DANA Widget Binding - Cinta Zakat API",
+    "description": "DANA Widget Binding Integration Testing Collection\nReference: https://dashboard.dana.id/api-docs-v2/api/dana-widget/overview",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8899"
+    },
+    {
+      "key": "api_base",
+      "value": "http://localhost:8899/api/v1"
+    },
+    {
+      "key": "user_token",
+      "value": ""
+    },
+    {
+      "key": "dana_access_token",
+      "value": ""
+    },
+    {
+      "key": "order_id",
+      "value": ""
+    },
+    {
+      "key": "ott_token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. OAuth & Token Management",
+      "item": [
+        {
+          "name": "Generate OAuth URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_id\": \"user-123\",\n  \"redirect_url\": \"http://localhost:8899/api/v1/dana/oauth-callback\",\n  \"mobile_number\": \"08123456789\"\n}"
+            },
+            "url": {
+              "raw": "{{api_base}}/dana/generate-oauth-url",
+              "host": ["{{api_base}}"],
+              "path": ["dana", "generate-oauth-url"]
+            }
+          }
+        },
+        {
+          "name": "Apply Token (Exchange AuthCode)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"auth_code\": \"xxx_from_oauth_callback\",\n  \"external_id\": \"user-123\"\n}"
+            },
+            "url": {
+              "raw": "{{api_base}}/dana/apply-token",
+              "host": ["{{api_base}}"],
+              "path": ["dana", "apply-token"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Payment Flow",
+      "item": [
+        {
+          "name": "Create Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"access_token\": \"{{dana_access_token}}\",\n  \"nominal\": 500000,\n  \"email\": \"user@example.com\",\n  \"metode_id\": 2,\n  \"campaign_id\": \"123\",\n  \"device_id\": \"web\",\n  \"redirect_url\": \"http://localhost:8899/payment/result\"\n}"
+            },
+            "url": {
+              "raw": "{{api_base}}/dana/create-order",
+              "host": ["{{api_base}}"],
+              "path": ["dana", "create-order"]
+            }
+          }
+        },
+        {
+          "name": "Apply OTT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"access_token\": \"{{dana_access_token}}\",\n  \"order_id\": \"{{order_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{api_base}}/dana/apply-ott",
+              "host": ["{{api_base}}"],
+              "path": ["dana", "apply-ott"]
+            }
+          }
+        },
+        {
+          "name": "Generate Payment URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"{{order_id}}\",\n  \"ott_token\": \"{{ott_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{api_base}}/dana/generate-payment-url",
+              "host": ["{{api_base}}"],
+              "path": ["dana", "generate-payment-url"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Query & Cancel",
+      "item": [
+        {
+          "name": "Query Payment Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{api_base}}/dana/query-payment/{{order_id}}",
+              "host": ["{{api_base}}"],
+              "path": ["dana", "query-payment", "{{order_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Cancel Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"{{order_id}}\",\n  \"reason\": \"User cancelled\"\n}"
+            },
+            "url": {
+              "raw": "{{api_base}}/dana/cancel-order",
+              "host": ["{{api_base}}"],
+              "path": ["dana", "cancel-order"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Webhook Testing",
+      "item": [
+        {
+          "name": "Simulate Webhook (Success)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-SIGNATURE",
+                "value": "your_signature_here"
+              },
+              {
+                "key": "X-TIMESTAMP",
+                "value": "2025-01-27T10:30:00Z"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"originalReferenceNo\": \"2020102977770000000009\",\n  \"originalPartnerReferenceNo\": \"CINTA-20250127103000-ABC123\",\n  \"merchantId\": \"216620000020928274717\",\n  \"status\": \"SUCCESS\"\n}"
+            },
+            "url": {
+              "raw": "{{api_base}}/dana/webhook",
+              "host": ["{{api_base}}"],
+              "path": ["dana", "webhook"]
+            }
+          }
+        },
+        {
+          "name": "Simulate Webhook (Failed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-SIGNATURE",
+                "value": "your_signature_here"
+              },
+              {
+                "key": "X-TIMESTAMP",
+                "value": "2025-01-27T10:30:00Z"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"originalReferenceNo\": \"2020102977770000000009\",\n  \"originalPartnerReferenceNo\": \"CINTA-20250127103000-ABC123\",\n  \"merchantId\": \"216620000020928274717\",\n  \"status\": \"FAILED\"\n}"
+            },
+            "url": {
+              "raw": "{{api_base}}/dana/webhook",
+              "host": ["{{api_base}}"],
+              "path": ["dana", "webhook"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

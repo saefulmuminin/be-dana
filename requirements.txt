@@ -1,0 +1,8 @@
+flask
+pymysql
+python-dotenv
+gunicorn
+cryptography
+requests
+pytest
+flake8

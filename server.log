@@ -1,0 +1,29 @@
+/Users/l-2024-diti-0101/Library/Python/3.9/lib/python/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+Traceback (most recent call last):
+  File "/Users/l-2024-diti-0101/Library/Python/3.9/lib/python/site-packages/pymysql/connections.py", line 661, in connect
+    sock = socket.create_connection(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socket.py", line 843, in create_connection
+    raise err
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socket.py", line 831, in create_connection
+    sock.connect(sa)
+socket.timeout: timed out
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/l-2024-diti-0101/Desktop/baznas/cintazakat/cinta-zakat-api/src/index.py", line 3, in <module>
+    from src.routes.api_routes import auth_bp, dana_bp, user_bp, disburse_bp
+  File "/Users/l-2024-diti-0101/Desktop/baznas/cintazakat/cinta-zakat-api/src/routes/api_routes.py", line 15, in <module>
+    authService = AuthService()
+  File "/Users/l-2024-diti-0101/Desktop/baznas/cintazakat/cinta-zakat-api/src/services/auth_service.py", line 8, in __init__
+    self.userModel = UserModel()
+  File "/Users/l-2024-diti-0101/Desktop/baznas/cintazakat/cinta-zakat-api/src/models/base_model.py", line 9, in __init__
+    self.conn = db.getConnection()
+  File "/Users/l-2024-diti-0101/Desktop/baznas/cintazakat/cinta-zakat-api/src/utils/database.py", line 12, in getConnection
+    return pymysql.connect(
+  File "/Users/l-2024-diti-0101/Library/Python/3.9/lib/python/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/l-2024-diti-0101/Library/Python/3.9/lib/python/site-packages/pymysql/connections.py", line 723, in connect
+    raise exc
+pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on '34.101.118.36' (timed out)")

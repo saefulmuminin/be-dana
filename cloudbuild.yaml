@@ -1,0 +1,33 @@
+steps:
+  # 1. Build Docker Image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_AR_REPO/$_SERVICE_NAME:$COMMIT_SHA', '.']
+
+  # 2. Push to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '$_REGION-docker.pkg.dev/$PROJECT_ID/$_AR_REPO/$_SERVICE_NAME:$COMMIT_SHA']
+
+  # 3. Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - '$_SERVICE_NAME'
+      - '--image=$_REGION-docker.pkg.dev/$PROJECT_ID/$_AR_REPO/$_SERVICE_NAME:$COMMIT_SHA'
+      - '--region=$_REGION'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      # Mapping GCP Secrets to Environment Variables
+      - '--set-secrets=DB_HOST=DB_HOST:latest,DB_USER=DB_USER:latest,DB_PASS=DB_PASS:latest,DB_NAME=DB_NAME:latest,SECRET_KEY=SECRET_KEY:latest,SIMBA_KEY=SIMBA_KEY:latest,SIMBA_ORG=SIMBA_ORG:latest,SIMBA_URL=SIMBA_URL:latest,API_MUZAKI_REGISTER=API_MUZAKI_REGISTER:latest,API_MUZAKI_EDIT=API_MUZAKI_EDIT:latest,DANA_CLIENT_ID=DANA_CLIENT_ID:latest,DANA_CLIENT_SECRET=DANA_CLIENT_SECRET:latest,DANA_MERCHANT_ID=DANA_MERCHANT_ID:latest,DANA_BASE_URL=DANA_BASE_URL:latest,DANA_WEBHOOK_PUBLIC_KEY=DANA_WEBHOOK_PUBLIC_KEY:latest,DANA_WEBHOOK_PUBLIC_KEY_PATH=DANA_WEBHOOK_PUBLIC_KEY_PATH:latest,DANA_PRIVATE_KEY=DANA_PRIVATE_KEY:latest,APP_REDIRECT_URL=APP_REDIRECT_URL:latest,API_BASE_URL=API_BASE_URL:latest'
+
+images:
+  - '$_REGION-docker.pkg.dev/$PROJECT_ID/$_AR_REPO/$_SERVICE_NAME:$COMMIT_SHA'
+
+substitutions:
+  _REGION: asia-southeast2
+  _SERVICE_NAME: api-cinta-zakat
+  _AR_REPO: cinta-zakat-repo
+
+options:
+  logging: CLOUD_LOGGING_ONLY
