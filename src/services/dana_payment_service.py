@@ -215,18 +215,32 @@ class DanaPaymentService:
 
     def _calculateFees(self, nominal, metode, campaign):
         """Hitung biaya"""
-        opsPercent = float(campaign.get('prosen_biayaoperasional', 0)) if campaign else 0
+        # Handle None values safely
+        opsPercent = 0
+        if campaign:
+            opsVal = campaign.get('prosen_biayaoperasional')
+            if opsVal is not None:
+                try:
+                    opsPercent = float(opsVal)
+                except (TypeError, ValueError):
+                    opsPercent = 0
+
         opsFee = nominal * (opsPercent / 100)
 
         adminFee = 0
         if metode:
-            adminRate = float(metode.get('biaya_admin', 0))
-            if metode.get('payment_type') == 'emoney':
-                adminFee = adminRate
-            elif 0 < adminRate < 1:
-                adminFee = nominal * adminRate
-            else:
-                adminFee = adminRate
+            adminVal = metode.get('biaya_admin')
+            if adminVal is not None:
+                try:
+                    adminRate = float(adminVal)
+                    if metode.get('payment_type') == 'emoney':
+                        adminFee = adminRate
+                    elif 0 < adminRate < 1:
+                        adminFee = nominal * adminRate
+                    else:
+                        adminFee = adminRate
+                except (TypeError, ValueError):
+                    adminFee = 0
 
         return {
             'ops': opsFee,
@@ -301,25 +315,66 @@ class DanaPaymentService:
         except Exception as e:
             return Response.error(f"Cancel order gagal: {str(e)}", 500)
 
-    def webhook(self, data, signature=None):
+    def webhook(self, data, signature=None, headers=None):
         """
         Handle webhook dari DANA untuk update status pembayaran
+        Sesuai SNAP API standard (Finish Notify)
 
         DANA akan kirim notifikasi saat:
         - Pembayaran berhasil (SUCCESS)
         - Pembayaran gagal (FAILED)
         - Pembayaran expired (EXPIRED)
+
+        Headers yang dikirim DANA:
+        - X-SIGNATURE: Digital signature
+        - X-TIMESTAMP: Timestamp request
         """
         try:
             self.logApiCall('/webhook', 'POST', data, 200, None,
-                           data.get('merchantTransId') or data.get('partnerReferenceNo'))
+                           data.get('merchantTransId') or data.get('partnerReferenceNo') or
+                           data.get('originalPartnerReferenceNo'))
 
-            # Extract data dari webhook
-            orderId = data.get('merchantTransId') or data.get('originalPartnerReferenceNo')
-            partnerRef = data.get('partnerReferenceNo') or data.get('originalPartnerReferenceNo')
-            danaRef = data.get('referenceNo') or data.get('originalReferenceNo')
-            status = data.get('status') or data.get('latestTransactionStatus')
-            amount = data.get('amount', {}).get('value') if isinstance(data.get('amount'), dict) else data.get('amount')
+            # Extract data dari webhook (support multiple formats)
+            # Format 1: Mini App tradePay callback
+            # Format 2: SNAP API Finish Notify
+            orderId = (data.get('merchantTransId') or
+                      data.get('originalPartnerReferenceNo') or
+                      data.get('partnerReferenceNo'))
+            partnerRef = (data.get('partnerReferenceNo') or
+                         data.get('originalPartnerReferenceNo'))
+            danaRef = (data.get('referenceNo') or
+                      data.get('originalReferenceNo'))
+            status = (data.get('status') or
+                     data.get('latestTransactionStatus') or
+                     data.get('transactionStatus'))
+
+            # Handle amount (bisa object atau string)
+            amount = None
+            if isinstance(data.get('amount'), dict):
+                amount = data.get('amount', {}).get('value')
+            else:
+                amount = data.get('amount')
+
+            # Log webhook untuk debugging
+            try:
+                conn = self.db.getConnection()
+                with conn.cursor() as cursor:
+                    sql = """
+                        INSERT INTO log_dana_webhook
+                        (webhook_type, order_id, dana_reference_no, payload, signature, created_date)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """
+                    cursor.execute(sql, (
+                        'FINISH_NOTIFY',
+                        orderId,
+                        danaRef,
+                        json.dumps(data),
+                        signature,
+                        datetime.now()
+                    ))
+                    conn.commit()
+            except Exception as logErr:
+                print(f"Webhook log failed: {str(logErr)}")
 
             # Cari donation
             donation = None
@@ -329,31 +384,46 @@ class DanaPaymentService:
                 donation = self.donationModel.findByPartnerRefNo(partnerRef)
 
             if not donation:
-                return Response.error("Order tidak ditemukan", 404)
+                # Return success anyway to acknowledge webhook
+                # DANA expects 2xx response
+                return {
+                    "responseCode": "2005600",
+                    "responseMessage": "Successful"
+                }, 200
 
-            # Map DANA status ke internal status
+            # Update database dengan DANA status langsung
+            # updateDanaStatusRef akan melakukan mapping sendiri
+            try:
+                # Normalize status untuk database function
+                normalizedStatus = status.upper() if status else 'PENDING'
+                self.donationModel.updateDanaStatusRef(
+                    donation['order_id'],
+                    danaRef,
+                    normalizedStatus
+                )
+            except Exception as dbErr:
+                print(f"DB update failed: {str(dbErr)}")
+
+            # Map DANA status ke internal status untuk sync ke SIMBA
             internalStatus = self._mapDanaStatus(status)
-
-            # Update database
-            self.donationModel.updateDanaStatusRef(
-                donation['order_id'],
-                danaRef,
-                internalStatus
-            )
 
             # Sync ke SIMBA jika sukses
             if internalStatus == 'berhasil':
                 self._syncToSimba(donation)
 
-            # Response sesuai format DANA
-            return Response.success(data={
-                "responseCode": "2005500",
+            # Response sesuai format DANA SNAP API
+            return {
+                "responseCode": "2005600",
                 "responseMessage": "Successful"
-            })
+            }, 200
 
         except Exception as e:
             self.logApiCall('/webhook', 'POST', data, 500, None, error=str(e))
-            return Response.error(f"Webhook error: {str(e)}", 500)
+            # Still return success to DANA to avoid retries
+            return {
+                "responseCode": "2005600",
+                "responseMessage": "Successful"
+            }, 200
 
     def _mapDanaStatus(self, danaStatus):
         """Map DANA status ke internal status"""
@@ -390,13 +460,17 @@ class DanaPaymentService:
 
     def finishPayment(self, data):
         """
-        Handle finish payment callback dari DANA
+        Handle finish payment callback dari DANA atau mini app
 
-        Endpoint ini dipanggil setelah user selesai di halaman DANA
+        Endpoint ini dipanggil setelah user selesai pembayaran:
+        - Dari DANA redirect callback
+        - Dari mini app setelah my.tradePay success
+        - Dari dev_mode simulation
         """
         orderId = data.get('orderId') or data.get('merchantTransId')
         resultCode = data.get('resultCode')
         resultStatus = data.get('resultStatus')
+        devMode = data.get('dev_mode', False)
 
         if not orderId:
             return Response.success(data={
@@ -404,14 +478,7 @@ class DanaPaymentService:
                 "resultCode": resultCode
             })
 
-        donation = self.donationModel.findByOrderId(orderId)
-        if not donation:
-            return Response.success(data={
-                "message": "Order not found",
-                "orderId": orderId
-            })
-
-        # Map result code
+        # Map result code to status
         if resultCode == '9000':
             status = 'berhasil'
         elif resultCode == '6001':
@@ -419,9 +486,29 @@ class DanaPaymentService:
         else:
             status = 'pending'
 
+        # Try to update database
+        dbUpdated = False
+        try:
+            donation = self.donationModel.findByOrderId(orderId)
+            if donation:
+                # Update status in database
+                if status == 'berhasil':
+                    self.donationModel.updateDanaStatusRef(orderId, f"DEV-{orderId}" if devMode else orderId, status)
+                    dbUpdated = True
+
+                    # Log the payment completion
+                    self.logApiCall('/finish-payment', 'POST',
+                                   {'orderId': orderId, 'resultCode': resultCode, 'devMode': devMode},
+                                   200, {'status': status}, orderId)
+        except Exception as e:
+            print(f"Database update failed: {str(e)}")
+            dbUpdated = False
+
         return Response.success(data={
             "orderId": orderId,
             "status": status,
             "resultCode": resultCode,
+            "dbUpdated": dbUpdated,
+            "devMode": devMode,
             "message": "Payment callback received"
         })

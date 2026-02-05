@@ -108,13 +108,20 @@ class DanaAuthService:
         Args:
             data: {
                 external_id: External ID
-                access_token: DANA access token (dari mini app)
+                auth_code: Auth code dari mini app (optional, for tracking)
                 user_info: { name, phone, email } (optional, dari my.getOpenUserInfo)
             }
         """
         try:
             externalId = data.get('external_id') or str(uuid.uuid4())
+            authCode = data.get('auth_code')  # Optional, for tracking
             userInfo = data.get('user_info') or {}
+
+            # Log auth code if provided (for tracking)
+            if authCode:
+                self.logApiCall('/seamless-login', 'POST',
+                               {'external_id': externalId, 'auth_code': authCode[:10] + '...' if authCode else None},
+                               200, {'status': 'received'})
 
             # Try to get or create user from database
             user = None

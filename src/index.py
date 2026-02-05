@@ -1,6 +1,6 @@
 from flask import Flask, jsonify
 from src.config.config import Config
-from src.routes.api_routes import auth_bp, dana_bp, user_bp, disburse_bp
+from src.routes.api_routes import auth_bp, dana_bp, user_bp, disburse_bp, snap_bp
 from src.services.health_service import HealthService
 
 app = Flask(__name__)
@@ -11,6 +11,9 @@ app.register_blueprint(auth_bp)
 app.register_blueprint(dana_bp)
 app.register_blueprint(user_bp)
 app.register_blueprint(disburse_bp)
+
+# Register SNAP API Blueprint (ASPI-mandated paths)
+app.register_blueprint(snap_bp)
 
 @app.route('/')
 def health_check():

@@ -12,6 +12,9 @@ dana_bp = Blueprint('dana', __name__, url_prefix='/api/v1/dana')
 user_bp = Blueprint('user', __name__, url_prefix='/api/v1/user')
 disburse_bp = Blueprint('disburse', __name__, url_prefix='/api/v1/disburse')
 
+# SNAP API Blueprint (ASPI-mandated path)
+snap_bp = Blueprint('snap', __name__, url_prefix='/v1.0')
+
 # Services
 authService = AuthService()
 danaAuthService = DanaAuthService()
@@ -177,7 +180,12 @@ def webhook():
     DANA akan mengirim notifikasi saat status pembayaran berubah
     """
     signature = request.headers.get('X-SIGNATURE')
-    return danaPaymentService.webhook(request.json or {}, signature)
+    headers = {
+        'X-SIGNATURE': signature,
+        'X-TIMESTAMP': request.headers.get('X-TIMESTAMP'),
+        'Content-Type': request.headers.get('Content-Type')
+    }
+    return danaPaymentService.webhook(request.json or {}, signature, headers)
 
 
 @dana_bp.route('/finish-payment', methods=['POST', 'GET'])
@@ -295,3 +303,85 @@ def disburseNotify():
     Webhook untuk notifikasi disbursement
     """
     return {"status": "success", "message": "Disburse notification received"}, 200
+
+
+# =============================================================================
+# SNAP API ROUTES (ASPI-mandated paths)
+# Sesuai dokumentasi DANA untuk Finish Notify
+# =============================================================================
+
+@snap_bp.route('/debit/notify', methods=['POST'])
+def debitNotify():
+    """
+    SNAP API Finish Notify Endpoint
+
+    Path: /v1.0/debit/notify (ASPI-mandated format)
+
+    DANA akan mengirim notifikasi pembayaran ke endpoint ini.
+    Headers:
+    - X-SIGNATURE: Digital signature untuk verifikasi
+    - X-TIMESTAMP: Timestamp request
+
+    Body (FinishNotifyRequest):
+    {
+        "originalPartnerReferenceNo": "partner_ref",
+        "originalReferenceNo": "dana_ref",
+        "merchantId": "merchant_id",
+        "amount": { "value": "10000.00", "currency": "IDR" },
+        "latestTransactionStatus": "SUCCESS",
+        "transactionStatusDesc": "Payment successful"
+    }
+    """
+    signature = request.headers.get('X-SIGNATURE')
+    headers = {
+        'X-SIGNATURE': signature,
+        'X-TIMESTAMP': request.headers.get('X-TIMESTAMP'),
+        'Content-Type': request.headers.get('Content-Type')
+    }
+    return danaPaymentService.webhook(request.json or {}, signature, headers)
+
+
+@snap_bp.route('/debit/status', methods=['POST'])
+def debitStatus():
+    """
+    SNAP API Query Payment Status
+
+    Path: /v1.0/debit/status
+
+    Body:
+    {
+        "originalPartnerReferenceNo": "partner_ref",
+        "originalReferenceNo": "dana_ref",
+        "merchantId": "merchant_id"
+    }
+    """
+    data = request.json or {}
+    orderId = data.get('originalPartnerReferenceNo') or data.get('partnerReferenceNo')
+
+    if not orderId:
+        return {
+            "responseCode": "4005401",
+            "responseMessage": "Invalid Mandatory Field originalPartnerReferenceNo"
+        }, 400
+
+    result = danaPaymentService.queryPayment(orderId)
+
+    # Convert to SNAP API format
+    if result.get('status') == 'success':
+        paymentData = result.get('data', {})
+        return {
+            "responseCode": "2005400",
+            "responseMessage": "Successful",
+            "originalPartnerReferenceNo": paymentData.get('orderId'),
+            "originalReferenceNo": paymentData.get('danaReferenceNo'),
+            "latestTransactionStatus": paymentData.get('status', '').upper(),
+            "amount": {
+                "value": str(paymentData.get('amount', 0)),
+                "currency": "IDR"
+            }
+        }, 200
+    else:
+        return {
+            "responseCode": "4045401",
+            "responseMessage": "Transaction Not Found"
+        }, 404
