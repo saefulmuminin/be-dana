@@ -22,6 +22,10 @@ from src.config.config import Config
 from datetime import datetime
 import uuid
 import json
+import requests
+import hashlib
+import base64
+import hmac
 
 
 class DanaPaymentService:
@@ -75,6 +79,160 @@ class DanaPaymentService:
                 masked[key] = '***MASKED***'
         return masked
 
+    def _generateSignature(self, httpMethod, endpointUrl, requestBody, timestamp):
+        """
+        Generate DANA API signature using HMAC-SHA256
+
+        Format: HTTP_METHOD + ":" + ENDPOINT + ":" + LOWERCASE(HEX(SHA256(minify(REQUEST_BODY)))) + ":" + TIMESTAMP
+        """
+        try:
+            # Minify and hash request body
+            bodyStr = json.dumps(requestBody, separators=(',', ':')) if requestBody else ''
+            bodyHash = hashlib.sha256(bodyStr.encode('utf-8')).hexdigest().lower()
+
+            # Create string to sign
+            stringToSign = f"{httpMethod}:{endpointUrl}:{bodyHash}:{timestamp}"
+
+            # Sign with client secret using HMAC-SHA256
+            clientSecret = Config.DANA_CLIENT_SECRET
+            if not clientSecret:
+                print("Warning: DANA_CLIENT_SECRET not configured")
+                return None
+
+            signature = hmac.new(
+                clientSecret.encode('utf-8'),
+                stringToSign.encode('utf-8'),
+                hashlib.sha256
+            ).hexdigest()
+
+            return signature
+
+        except Exception as e:
+            print(f"Signature generation failed: {str(e)}")
+            return None
+
+    def _callDanaPaymentApi(self, orderData):
+        """
+        Call DANA /v1/payments/pay API to create payment order
+
+        Returns:
+            {
+                'success': bool,
+                'paymentId': str,  # tradeNO untuk my.tradePay
+                'error': str
+            }
+        """
+        try:
+            baseUrl = Config.DANA_BASE_URL
+            endpoint = "/v1/payments/pay"
+            fullUrl = f"{baseUrl}{endpoint}"
+
+            # Generate request timestamp
+            timestamp = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S+00:00')
+
+            # Prepare request body sesuai DANA API spec
+            requestBody = {
+                "head": {
+                    "version": "2.0",
+                    "function": "dana.acquiring.order.createOrder",
+                    "clientId": Config.DANA_CLIENT_ID,
+                    "clientSecret": Config.DANA_CLIENT_SECRET,
+                    "reqTime": timestamp,
+                    "reqMsgId": orderData['order_id'],
+                    "reserve": "{}"
+                },
+                "body": {
+                    "merchantId": Config.DANA_MERCHANT_ID,
+                    "order": {
+                        "orderTitle": f"Donasi - {orderData.get('nama_lengkap', 'Donatur')}",
+                        "orderAmount": {
+                            "currency": "IDR",
+                            "value": str(int(orderData['total_bayar'] * 100))  # Dalam sen
+                        },
+                        "merchantTransId": orderData['order_id'],
+                        "merchantTransTime": timestamp,
+                        "expiryTime": "1800"  # 30 menit
+                    },
+                    "productInfo": {
+                        "productName": orderData.get('tipe_zakat', 'Donasi').capitalize(),
+                        "productCode": str(orderData.get('campaign_id', '0'))
+                    },
+                    "paymentNotifyUrl": Config.DANA_WEBHOOK_URL,
+                    "paymentRedirectUrl": Config.DANA_FINISH_PAYMENT_URL
+                }
+            }
+
+            # Generate signature
+            signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
+
+            headers = {
+                'Content-Type': 'application/json',
+                'X-TIMESTAMP': timestamp,
+                'X-CLIENT-KEY': Config.DANA_CLIENT_ID,
+                'X-SIGNATURE': signature or ''
+            }
+
+            print(f"Calling DANA API: {fullUrl}")
+            print(f"Request body: {json.dumps(requestBody, indent=2)}")
+
+            # Make API call
+            response = requests.post(
+                fullUrl,
+                json=requestBody,
+                headers=headers,
+                timeout=30
+            )
+
+            print(f"DANA API response status: {response.status_code}")
+            print(f"DANA API response: {response.text}")
+
+            # Log API call
+            self.logApiCall(endpoint, 'POST', requestBody, response.status_code,
+                           response.json() if response.ok else response.text,
+                           orderData['order_id'])
+
+            if response.ok:
+                respData = response.json()
+
+                # Check response structure
+                respBody = respData.get('response', {}).get('body', {})
+                result = respData.get('response', {}).get('head', {})
+
+                # Handle different response formats
+                if result.get('respCode') == '00' or result.get('code') == 'SUCCESS':
+                    # Success - get paymentId/acquirementId
+                    paymentId = (respBody.get('acquirementId') or
+                                respBody.get('paymentId') or
+                                respBody.get('orderNo') or
+                                orderData['order_id'])
+
+                    return {
+                        'success': True,
+                        'paymentId': paymentId,
+                        'danaResponse': respData
+                    }
+                else:
+                    # API returned error
+                    errorMsg = result.get('respMsg') or result.get('message') or 'Unknown error'
+                    return {
+                        'success': False,
+                        'error': errorMsg,
+                        'danaResponse': respData
+                    }
+            else:
+                return {
+                    'success': False,
+                    'error': f"HTTP {response.status_code}: {response.text}"
+                }
+
+        except requests.exceptions.Timeout:
+            return {'success': False, 'error': 'DANA API timeout'}
+        except requests.exceptions.ConnectionError:
+            return {'success': False, 'error': 'Cannot connect to DANA API'}
+        except Exception as e:
+            print(f"DANA API call failed: {str(e)}")
+            return {'success': False, 'error': str(e)}
+
     def createOrder(self, data):
         """
         Create payment order untuk DANA Mini Program
@@ -118,22 +276,55 @@ class DanaPaymentService:
                 print(f"Database save failed (continuing): {str(dbError)}")
                 dbSaved = False
 
+            # Call DANA API to create payment order
+            # tradeNO untuk my.tradePay harus dari DANA
+            danaApiCalled = False
+            tradeNO = orderData['order_id']  # Default to local orderId
+
+            # Check if DANA credentials are configured
+            if Config.DANA_CLIENT_ID and Config.DANA_CLIENT_SECRET and Config.DANA_MERCHANT_ID:
+                print("Calling DANA API to create payment order...")
+                danaResult = self._callDanaPaymentApi(orderData)
+
+                if danaResult['success']:
+                    # Use paymentId from DANA as tradeNO
+                    tradeNO = danaResult['paymentId']
+                    danaApiCalled = True
+                    print(f"DANA API success, tradeNO: {tradeNO}")
+
+                    # Update database with DANA tradeNO
+                    if dbSaved:
+                        try:
+                            self.donationModel.updateDanaRefs(orderData['order_id'], tradeNO, None)
+                        except:
+                            pass
+                else:
+                    # DANA API failed - log but continue with local orderId
+                    # Mini Program might still work if properly configured
+                    print(f"DANA API failed: {danaResult.get('error')}")
+                    print("Continuing with local orderId (may not work for payment)")
+            else:
+                print("DANA credentials not configured, skipping DANA API call")
+                print("Make sure DANA_CLIENT_ID, DANA_CLIENT_SECRET, and DANA_MERCHANT_ID are set in .env")
+
             try:
                 self.logApiCall('/create-order', 'POST', data, 200,
-                               {'order_id': orderData['order_id']},
+                               {'order_id': orderData['order_id'], 'trade_no': tradeNO, 'dana_api_called': danaApiCalled},
                                orderData['order_id'])
             except:
                 pass  # Ignore logging errors
 
             return Response.success(data={
                 "orderId": orderData['order_id'],
+                "tradeNO": tradeNO,  # Ini yang dipakai untuk my.tradePay
                 "partnerReferenceNo": orderData['partner_reference_no'],
                 "amount": int(orderData['total_bayar']),
                 "nominal": int(orderData['nominal']),
                 "biayaAdmin": int(orderData['biaya_admin']),
                 "status": "pending",
                 "dbSaved": dbSaved,
-                "message": "Order berhasil dibuat. Gunakan orderId untuk my.tradePay()"
+                "danaApiCalled": danaApiCalled,
+                "message": "Order berhasil dibuat. Gunakan tradeNO untuk my.tradePay()"
             }, message="Order berhasil dibuat")
 
         except Exception as e:
