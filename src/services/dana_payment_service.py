@@ -117,6 +117,20 @@ class DanaPaymentService:
                 print("Error: DANA_PRIVATE_KEY not configured in .env")
                 return None
 
+            # Fix: Robust Private Key Formatting
+            # 1. Remove existing headers/footers/newlines/spaces to get raw base64
+            cleanKey = privateKey.replace("-----BEGIN RSA PRIVATE KEY-----", "") \
+                                 .replace("-----END RSA PRIVATE KEY-----", "") \
+                                 .replace("-----BEGIN PRIVATE KEY-----", "") \
+                                 .replace("-----END PRIVATE KEY-----", "") \
+                                 .replace("\\n", "").replace("\n", "").replace(" ", "")
+            
+            # 2. Chunk into 64 characters per line
+            chunkedKey = '\n'.join(cleanKey[i:i+64] for i in range(0, len(cleanKey), 64))
+            
+            # 3. Re-wrap in PEM format
+            pemKey = f"-----BEGIN RSA PRIVATE KEY-----\n{chunkedKey}\n-----END RSA PRIVATE KEY-----"
+
             # Minify and hash request body
             bodyStr = json.dumps(requestBody, separators=(',', ':')) if requestBody else ''
             bodyHash = hashlib.sha256(bodyStr.encode('utf-8')).hexdigest().lower()
@@ -126,20 +140,7 @@ class DanaPaymentService:
             print(f"String to sign: {stringToSign}")
 
             # Load RSA private key
-            # Handle different private key formats
-            if privateKey.startswith('-----BEGIN'):
-                # Already in PEM format
-                pkey = RSA.importKey(privateKey)
-            else:
-                # Base64 encoded key without PEM headers
-                # Try PKCS#8 format first (standard DANA format)
-                try:
-                    pemKey = f"-----BEGIN PRIVATE KEY-----\n{privateKey}\n-----END PRIVATE KEY-----"
-                    pkey = RSA.importKey(pemKey)
-                except:
-                    # Fallback to PKCS#1 format
-                    pemKey = f"-----BEGIN RSA PRIVATE KEY-----\n{privateKey}\n-----END RSA PRIVATE KEY-----"
-                    pkey = RSA.importKey(pemKey)
+            pkey = RSA.importKey(pemKey)
 
             # Sign with RSA private key
             signer = PKCS1_v1_5.new(pkey)
@@ -383,6 +384,13 @@ class DanaPaymentService:
                     print("  2. DANA_CLIENT_ID (X-PARTNER-ID) is correct")
                     print("  3. DANA_MERCHANT_ID is correct")
                     print("  4. Network connectivity to DANA sandbox")
+                    
+                    # Return error agar frontend tahu bahwa inisialisasi pembayaran gagal
+                    # Jangan lanjut dengan fake tradeNO
+                    return Response.error(
+                        f"Gagal inisialisasi pembayaran ke DANA: {danaResult.get('error')}", 
+                        500
+                    )
             else:
                 print("⚠️  DANA credentials not fully configured!")
                 print("Required in .env:")
