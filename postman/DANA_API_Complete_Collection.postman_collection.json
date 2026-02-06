@@ -1,0 +1,711 @@
+{
+	"info": {
+		"_postman_id": "dana-api-complete-collection",
+		"name": "DANA API - Complete Collection",
+		"description": "Complete API collection for DANA Payment Integration (BAZNAS Cinta Zakat)\n\nBase URL: https://be-dana.vercel.app\n\nEnvironments:\n- Production: https://be-dana.vercel.app\n- Local: http://127.0.0.1:5000\n\nAuthentication: Bearer Token (JWT) for protected endpoints",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health & Status",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/health",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "health"]
+						},
+						"description": "Check API health status"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Generate OAuth URL",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"external_id\": \"USER-{{$timestamp}}\",\n  \"redirect_url\": \"https://be-dana.vercel.app/api/v1/auth/finish-redirect\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/generate-oauth-url",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "generate-oauth-url"]
+						},
+						"description": "Generate DANA OAuth URL for account binding\n\nNote: For Mini Program, use my.getAuthCode() instead"
+					},
+					"response": []
+				},
+				{
+					"name": "Apply Token",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"auth_code\": \"your_auth_code_from_dana\",\n  \"external_id\": \"USER-123456\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/apply-token",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "apply-token"]
+						},
+						"description": "Exchange auth code from DANA Mini App for access token"
+					},
+					"response": []
+				},
+				{
+					"name": "Seamless Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"external_id\": \"USER-123456\",\n  \"access_token\": \"optional_dana_access_token\",\n  \"user_info\": {\n    \"name\": \"John Doe\",\n    \"phone\": \"08123456789\",\n    \"email\": \"john@example.com\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/seamless-login",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "seamless-login"]
+						},
+						"description": "Seamless login after getting token from DANA Mini App"
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh Token",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"your_expired_jwt_token\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/refresh-token",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "refresh-token"]
+						},
+						"description": "Refresh expired JWT token"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "DANA Payment",
+			"item": [
+				{
+					"name": "Create Order",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"// Auto-save orderId and tradeNO to environment",
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.status === 'success' && jsonData.data) {",
+									"        pm.environment.set('order_id', jsonData.data.orderId);",
+									"        pm.environment.set('trade_no', jsonData.data.tradeNO);",
+									"        console.log('Saved orderId:', jsonData.data.orderId);",
+									"        console.log('Saved tradeNO:', jsonData.data.tradeNO);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}",
+								"description": "Optional - if logged in",
+								"disabled": true
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nominal\": 10000,\n  \"email\": \"donor@example.com\",\n  \"nama_lengkap\": \"Ahmad Donor\",\n  \"campaign_id\": 1,\n  \"tipe_zakat\": \"Zakat Mal\",\n  \"doa_muzaki\": \"Semoga berkah\",\n  \"hamba_allah\": false\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/create-order",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "create-order"]
+						},
+						"description": "Create payment order for DANA Mini Program\n\nReturns orderId and tradeNO to use with my.tradePay()\n\nWith DANA_DEV_MODE=true:\n- danaApiCalled: false\n- tradeNO = orderId (local ID for testing)\n\nWith DANA API working:\n- danaApiCalled: true\n- tradeNO from DANA API"
+					},
+					"response": []
+				},
+				{
+					"name": "Query Payment Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/query-payment/{{order_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "query-payment", "{{order_id}}"]
+						},
+						"description": "Query payment status by orderId\n\nUse orderId from create-order response"
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Order",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"order_id\": \"{{order_id}}\",\n  \"reason\": \"User cancelled payment\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/cancel-order",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "cancel-order"]
+						},
+						"description": "Cancel unpaid order"
+					},
+					"response": []
+				},
+				{
+					"name": "Finish Payment (Callback)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderId\": \"{{order_id}}\",\n  \"resultCode\": \"9000\",\n  \"resultStatus\": \"SUCCESS\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/finish-payment",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "finish-payment"]
+						},
+						"description": "Callback after user completes payment in DANA\n\nResult Codes:\n- 9000: Payment success\n- 4000: Payment failed\n- 6001: User cancelled\n- 6002: Network error\n- 8000: Processing"
+					},
+					"response": []
+				},
+				{
+					"name": "Webhook (DANA Notification)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-SIGNATURE",
+								"value": "{{dana_signature}}",
+								"description": "Digital signature from DANA"
+							},
+							{
+								"key": "X-TIMESTAMP",
+								"value": "{{$timestamp}}",
+								"description": "Request timestamp"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"originalPartnerReferenceNo\": \"{{order_id}}\",\n  \"originalReferenceNo\": \"DANA-REF-123\",\n  \"merchantId\": \"216620010022044847375\",\n  \"amount\": {\n    \"value\": \"10000.00\",\n    \"currency\": \"IDR\"\n  },\n  \"latestTransactionStatus\": \"SUCCESS\",\n  \"transactionStatusDesc\": \"Payment successful\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/webhook",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "webhook"]
+						},
+						"description": "Webhook endpoint for DANA payment notifications\n\nDANA sends notifications when payment status changes"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "SNAP API (ASPI Standard)",
+			"item": [
+				{
+					"name": "Debit Notify",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-SIGNATURE",
+								"value": "{{dana_signature}}"
+							},
+							{
+								"key": "X-TIMESTAMP",
+								"value": "{{$timestamp}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"originalPartnerReferenceNo\": \"DANA-20260206123456\",\n  \"originalReferenceNo\": \"DANA-REF-123\",\n  \"merchantId\": \"216620010022044847375\",\n  \"amount\": {\n    \"value\": \"10000.00\",\n    \"currency\": \"IDR\"\n  },\n  \"latestTransactionStatus\": \"SUCCESS\",\n  \"transactionStatusDesc\": \"Payment successful\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1.0/debit/notify",
+							"host": ["{{base_url}}"],
+							"path": ["v1.0", "debit", "notify"]
+						},
+						"description": "SNAP API Finish Notify Endpoint (ASPI-mandated path)\n\nDANA sends payment notifications to this endpoint"
+					},
+					"response": []
+				},
+				{
+					"name": "Debit Status Query",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"originalPartnerReferenceNo\": \"{{order_id}}\",\n  \"merchantId\": \"216620010022044847375\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1.0/debit/status",
+							"host": ["{{base_url}}"],
+							"path": ["v1.0", "debit", "status"]
+						},
+						"description": "SNAP API Query Payment Status\n\nQuery transaction status using SNAP API format"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "User Profile (Protected)",
+			"item": [
+				{
+					"name": "Get Profile",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/user/profile",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "user", "profile"]
+						},
+						"description": "Get user profile\n\nRequires: Bearer token"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Profile",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nama\": \"Ahmad Updated\",\n  \"handphone\": \"08123456789\",\n  \"alamat\": \"Jakarta Selatan\",\n  \"tgl_lahir\": \"1990-01-01\",\n  \"jenis_kelamin\": \"L\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/user/profile",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "user", "profile"]
+						},
+						"description": "Update user profile\n\nRequires: Bearer token"
+					},
+					"response": []
+				},
+				{
+					"name": "Transaction History",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/user/transaction-history?limit=50&offset=0",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "user", "transaction-history"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "50"
+								},
+								{
+									"key": "offset",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Get user transaction history\n\nRequires: Bearer token"
+					},
+					"response": []
+				},
+				{
+					"name": "Transaction Detail",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/user/transaction-detail/{{order_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "user", "transaction-detail", "{{order_id}}"]
+						},
+						"description": "Get transaction detail by ID\n\nRequires: Bearer token"
+					},
+					"response": []
+				},
+				{
+					"name": "Send History Email",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/user/send-history-email",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "user", "send-history-email"]
+						},
+						"description": "Send transaction history to email\n\nRequires: Bearer token"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Payment Channels",
+			"item": [
+				{
+					"name": "Get Payment Channels",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/content/payment-channels",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "content", "payment-channels"]
+						},
+						"description": "Get list of available payment channels"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Test Scenarios (UAT)",
+			"item": [
+				{
+					"name": "Scenario 1: Success Payment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nominal\": 10000,\n  \"email\": \"test.success@example.com\",\n  \"nama_lengkap\": \"Test Success\",\n  \"campaign_id\": 1,\n  \"tipe_zakat\": \"Zakat Mal\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/create-order",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "create-order"]
+						},
+						"description": "Test Scenario #1: Normal successful payment\n\nExpected: orderId and tradeNO returned"
+					},
+					"response": []
+				},
+				{
+					"name": "Scenario 2: Invalid Amount (0)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nominal\": 0,\n  \"email\": \"test@example.com\",\n  \"nama_lengkap\": \"Test User\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/create-order",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "create-order"]
+						},
+						"description": "Test Scenario #2: Invalid amount (zero)\n\nExpected: Error response"
+					},
+					"response": []
+				},
+				{
+					"name": "Scenario 3: Missing Required Field",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nominal\": 10000\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/create-order",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "create-order"]
+						},
+						"description": "Test Scenario #3: Missing email (required field)\n\nExpected: Error response about missing field"
+					},
+					"response": []
+				},
+				{
+					"name": "Scenario 4: Large Amount",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nominal\": 99999999,\n  \"email\": \"test.large@example.com\",\n  \"nama_lengkap\": \"Test Large Amount\",\n  \"campaign_id\": 1\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/create-order",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "create-order"]
+						},
+						"description": "Test Scenario #4: Large amount transaction\n\nExpected: Should handle large amounts correctly"
+					},
+					"response": []
+				},
+				{
+					"name": "Scenario 5: Payment Success Callback",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderId\": \"{{order_id}}\",\n  \"resultCode\": \"9000\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/finish-payment",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "finish-payment"]
+						},
+						"description": "Test Scenario #5: Successful payment callback\n\nResultCode 9000 = Payment success"
+					},
+					"response": []
+				},
+				{
+					"name": "Scenario 6: Payment Failed Callback",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderId\": \"{{order_id}}\",\n  \"resultCode\": \"4000\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/finish-payment",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "finish-payment"]
+						},
+						"description": "Test Scenario #6: Failed payment callback\n\nResultCode 4000 = Payment failed"
+					},
+					"response": []
+				},
+				{
+					"name": "Scenario 7: User Cancelled",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderId\": \"{{order_id}}\",\n  \"resultCode\": \"6001\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/finish-payment",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "finish-payment"]
+						},
+						"description": "Test Scenario #7: User cancelled payment\n\nResultCode 6001 = User cancelled"
+					},
+					"response": []
+				},
+				{
+					"name": "Scenario 8: Query Non-existent Order",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/dana/query-payment/INVALID-ORDER-ID",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "dana", "query-payment", "INVALID-ORDER-ID"]
+						},
+						"description": "Test Scenario #8: Query order that doesn't exist\n\nExpected: Order not found error"
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "https://be-dana.vercel.app",
+			"type": "string"
+		},
+		{
+			"key": "jwt_token",
+			"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJtdXpha2lfaWQiOjEsInR5cGUiOiJ1c2VyIiwiZXhwIjoxNzcwMjc1MTMyfQ.oCUKWxgBl_fPy41YPGbboT1L5rcFnXjPMT0voOKOo8o",
+			"type": "string"
+		},
+		{
+			"key": "order_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "trade_no",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "dana_signature",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
