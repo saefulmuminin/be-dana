@@ -182,6 +182,7 @@ class DanaPaymentService:
             externalId = f"EXT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
 
             # Prepare request body sesuai DANA SNAP API Direct Debit Payment
+            # Minimal required fields to avoid field format errors
             requestBody = {
                 "partnerReferenceNo": orderData['partner_reference_no'],
                 "merchantId": Config.DANA_MERCHANT_ID,
@@ -190,19 +191,15 @@ class DanaPaymentService:
                     "currency": "IDR"
                 },
                 "additionalInfo": {
-                    "supportDeepLinkCheckoutUrl": "true",  # String format as per DANA docs
-                    "productCode": "51051000100000000001",  # Product code untuk donation
+                    "productCode": "51051000100000000001",
                     "order": {
-                        "orderTitle": f"Donasi - {orderData.get('nama_lengkap', 'Donatur')}",
-                        "createdTime": timestamp
+                        "orderTitle": f"Donasi dari {orderData.get('nama_lengkap', 'Hamba Allah')}"[:64]  # Max 64 chars
                     },
-                    "mcc": "8398",  # MCC untuk Religious Organizations
+                    "mcc": "8398",
                     "envInfo": {
                         "sourcePlatform": "MINIPROGRAM",
                         "terminalType": "APP",
-                        "orderTerminalType": "APP",
-                        "osType": "IOS",  # Default to IOS for mini program
-                        "clientIp": "0.0.0.0"  # Default IP
+                        "orderTerminalType": "APP"
                     }
                 }
             }
