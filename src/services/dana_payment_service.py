@@ -117,19 +117,9 @@ class DanaPaymentService:
                 print("Error: DANA_PRIVATE_KEY not configured in .env")
                 return None
 
-            # Fix: Robust Private Key Formatting
-            # 1. Remove existing headers/footers/newlines/spaces to get raw base64
-            cleanKey = privateKey.replace("-----BEGIN RSA PRIVATE KEY-----", "") \
-                                 .replace("-----END RSA PRIVATE KEY-----", "") \
-                                 .replace("-----BEGIN PRIVATE KEY-----", "") \
-                                 .replace("-----END PRIVATE KEY-----", "") \
-                                 .replace("\\n", "").replace("\n", "").replace(" ", "")
-            
-            # 2. Chunk into 64 characters per line
-            chunkedKey = '\n'.join(cleanKey[i:i+64] for i in range(0, len(cleanKey), 64))
-            
-            # 3. Re-wrap in PEM format
-            pemKey = f"-----BEGIN RSA PRIVATE KEY-----\n{chunkedKey}\n-----END RSA PRIVATE KEY-----"
+            # Fix: Handle newline characters from Vercel/Env variables
+            if '\\n' in privateKey:
+                privateKey = privateKey.replace('\\n', '\n')
 
             # Minify and hash request body
             bodyStr = json.dumps(requestBody, separators=(',', ':')) if requestBody else ''
@@ -140,6 +130,7 @@ class DanaPaymentService:
             print(f"String to sign: {stringToSign}")
 
             # Load RSA private key
+            # Note: pemKey is already formatted correctly by the robust logic above
             pkey = RSA.importKey(pemKey)
 
             # Sign with RSA private key
