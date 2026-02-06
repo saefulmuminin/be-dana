@@ -23,6 +23,7 @@ from src.utils.response import Response
 from src.utils.database import Database
 from src.config.config import Config
 from datetime import datetime, timezone, timedelta
+import os
 import uuid
 import json
 import requests
@@ -383,13 +384,18 @@ class DanaPaymentService:
                     print("  2. DANA_CLIENT_ID (X-PARTNER-ID) is correct")
                     print("  3. DANA_MERCHANT_ID is correct")
                     print("  4. Network connectivity to DANA sandbox")
-                    
-                    # Return error agar frontend tahu bahwa inisialisasi pembayaran gagal
-                    # Jangan lanjut dengan fake tradeNO
-                    return Response.error(
-                        f"Gagal inisialisasi pembayaran ke DANA: {danaResult.get('error')}", 
-                        500
-                    )
+
+                    # Development mode: Allow continuing with local orderId for testing
+                    # This enables frontend to test payment flow in simulator
+                    dev_mode = os.getenv('DANA_DEV_MODE', 'false').lower() == 'true'
+                    if not dev_mode:
+                        return Response.error(
+                            f"Gagal inisialisasi pembayaran ke DANA: {danaResult.get('error')}",
+                            500
+                        )
+                    else:
+                        print("⚠️  DEV MODE: Continuing with local orderId for testing...")
+                        tradeNO = orderData['order_id']  # Use local orderId in dev mode
             else:
                 print("⚠️  DANA credentials not fully configured!")
                 print("Required in .env:")
