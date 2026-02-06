@@ -1,0 +1,9 @@
+# Files to ignore during Vercel deployment
+.git
+.github
+__pycache__
+*.pyc
+.env.local
+.DS_Store
+node_modules
+.vscode
