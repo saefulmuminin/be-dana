@@ -190,7 +190,7 @@ class DanaPaymentService:
                     "currency": "IDR"
                 },
                 "additionalInfo": {
-                    "supportDeepLinkCheckoutUrl": False,  # Mini Program tidak butuh deeplink
+                    "supportDeepLinkCheckoutUrl": "true",  # String format as per DANA docs
                     "productCode": "51051000100000000001",  # Product code untuk donation
                     "order": {
                         "orderTitle": f"Donasi - {orderData.get('nama_lengkap', 'Donatur')}",
@@ -200,7 +200,9 @@ class DanaPaymentService:
                     "envInfo": {
                         "sourcePlatform": "MINIPROGRAM",
                         "terminalType": "APP",
-                        "orderTerminalType": "APP"
+                        "orderTerminalType": "APP",
+                        "osType": "IOS",  # Default to IOS for mini program
+                        "clientIp": "0.0.0.0"  # Default IP
                     }
                 }
             }
