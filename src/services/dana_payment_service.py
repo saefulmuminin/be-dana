@@ -4,13 +4,16 @@ Untuk integrasi pembayaran di DANA Mini App
 
 Flow Mini Program Payment:
 1. User isi form donasi di mini app
-2. Mini app call backend /create-order -> backend return orderId
-3. Mini app call my.tradePay(tradeNO: orderId)
-4. DANA SDK handle pembayaran
-5. DANA kirim webhook ke backend untuk update status
+2. Mini app call backend /create-order -> backend return orderId + tradeNO
+3. Backend call DANA Direct Debit Payment API -> dapat referenceNo
+4. Mini app call my.tradePay(tradeNO: referenceNo)
+5. DANA SDK handle pembayaran (popup PIN muncul)
+6. DANA kirim webhook ke backend untuk update status
 
-Catatan: my.tradePay menangani pembayaran langsung,
-backend hanya perlu menyimpan order dan menerima webhook.
+API Reference:
+- Endpoint: /rest/redirection/v1.0/debit/payment-host-to-host
+- Signature: RSA asymmetric (PKCS1_v1_5 + SHA256)
+- Response: referenceNo digunakan sebagai tradeNO untuk my.tradePay
 """
 
 from src.models.donation_model import DonationModel
@@ -19,13 +22,28 @@ from src.services.simba_service import SimbaService
 from src.utils.response import Response
 from src.utils.database import Database
 from src.config.config import Config
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import uuid
 import json
 import requests
 import hashlib
 import base64
-import hmac
+
+# RSA Signature imports
+try:
+    from Crypto.Signature import PKCS1_v1_5
+    from Crypto.Hash import SHA256
+    from Crypto.PublicKey import RSA
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    try:
+        from Cryptodome.Signature import PKCS1_v1_5
+        from Cryptodome.Hash import SHA256
+        from Cryptodome.PublicKey import RSA
+        CRYPTO_AVAILABLE = True
+    except ImportError:
+        CRYPTO_AVAILABLE = False
+        print("Warning: PyCryptodome not installed. RSA signature will not work.")
 
 
 class DanaPaymentService:
