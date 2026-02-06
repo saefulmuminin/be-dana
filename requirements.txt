@@ -3,6 +3,7 @@ flask-sqlalchemy
 python-dotenv
 gunicorn
 cryptography
+pycryptodome
 requests
 psycopg2-binary
 PyJWT
