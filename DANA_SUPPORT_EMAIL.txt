@@ -1,0 +1,106 @@
+Subject: Error 4005401 - Invalid Field Format in Direct Debit Payment API (Merchant ID: 216620010022044847375)
+
+Dear DANA Support Team,
+
+I am experiencing error 4005401 "Invalid Field Format" when calling the Direct Debit Payment API for Mini Program integration. Our authentication is working (signature is accepted), but the API returns a field validation error.
+
+═══════════════════════════════════════════════════════════════
+MERCHANT DETAILS
+═══════════════════════════════════════════════════════════════
+Merchant ID: 216620010022044847375
+Client ID: 2026020413531650671653
+Channel ID: 95221
+Environment: Sandbox
+Integration Type: Mini Program (Non-Binding)
+
+═══════════════════════════════════════════════════════════════
+API CALL DETAILS
+═══════════════════════════════════════════════════════════════
+Endpoint: POST https://api.sandbox.dana.id/v1.0/debit/payment.page
+Authentication: HMACSHA256 signature (working - DANA responds)
+Content-Type: application/json
+
+Request Body (Minimal):
+{
+  "partnerReferenceNo": "DANA-20260206123456",
+  "merchantId": "216620010022044847375",
+  "amount": {
+    "value": "10000.00",
+    "currency": "IDR"
+  },
+  "additionalInfo": {
+    "order": {
+      "orderTitle": "Donasi dari User"
+    },
+    "envInfo": {
+      "sourcePlatform": "MINIPROGRAM",
+      "terminalType": "APP",
+      "orderTerminalType": "APP"
+    }
+  }
+}
+
+Error Response:
+{
+  "responseCode": "4005401",
+  "responseMessage": "Invalid Field Format"
+}
+
+═══════════════════════════════════════════════════════════════
+TROUBLESHOOTING ATTEMPTED
+═══════════════════════════════════════════════════════════════
+✅ Verified RSA signature generation (PKCS1_v1_5 + SHA256)
+✅ Verified request format matches SNAP API documentation
+✅ Tested with productCode "51051000100000000001" - same error
+✅ Tested with mcc "8398" - same error
+✅ Tested without productCode and mcc - same error
+✅ Verified all required fields are included
+✅ Verified amount format is correct (2 decimal places)
+✅ Verified merchant ID matches credentials
+
+═══════════════════════════════════════════════════════════════
+QUESTIONS FOR DANA SUPPORT
+═══════════════════════════════════════════════════════════════
+1. Is Direct Debit Payment API enabled for merchant 216620010022044847375?
+
+2. Is Mini Program (Non-Binding) integration approved for this merchant?
+
+3. Which productCode values are approved for this merchant?
+   - Tried: "51051000100000000001" (Charity/Donation)
+   - Are there other codes we should use?
+
+4. Is MCC "8398" (Religious Organizations) approved?
+   - Should we use a different MCC?
+
+5. Are there specific merchant configuration requirements we're missing?
+
+6. Does sandbox environment have limitations on certain fields?
+
+7. Which specific field is causing the 4005401 error?
+
+═══════════════════════════════════════════════════════════════
+BUSINESS CONTEXT
+═══════════════════════════════════════════════════════════════
+Application: Cinta Zakat (Religious Donation Platform)
+Use Case: Accepting donations via DANA in Mini Program
+Urgency: Blocking production launch
+Documentation Referenced: DANA SNAP API v1.0, Mini Program SDK docs
+
+We need guidance on merchant configuration requirements to resolve this validation error. Our technical implementation is complete and working - we just need the merchant account properly configured.
+
+Please advise on next steps.
+
+Thank you for your assistance.
+
+Best regards,
+[Your Name]
+[Your Email]
+[Your Phone Number]
+[Company Name]
+
+═══════════════════════════════════════════════════════════════
+ATTACHMENTS (if possible)
+═══════════════════════════════════════════════════════════════
+- Request headers (with signature)
+- Full error response
+- Merchant portal screenshots
