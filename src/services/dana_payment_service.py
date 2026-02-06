@@ -121,6 +121,16 @@ class DanaPaymentService:
             if '\\n' in privateKey:
                 privateKey = privateKey.replace('\\n', '\n')
 
+            # Format private key to PEM format if needed
+            if not privateKey.startswith('-----BEGIN'):
+                # Raw base64 key - wrap with PEM headers and format with line breaks
+                # PEM format requires 64 characters per line
+                keyBody = privateKey.strip()
+                # Split into 64-char lines
+                lines = [keyBody[i:i+64] for i in range(0, len(keyBody), 64)]
+                formattedKey = '\n'.join(lines)
+                privateKey = f"-----BEGIN RSA PRIVATE KEY-----\n{formattedKey}\n-----END RSA PRIVATE KEY-----"
+
             # Minify and hash request body
             bodyStr = json.dumps(requestBody, separators=(',', ':')) if requestBody else ''
             bodyHash = hashlib.sha256(bodyStr.encode('utf-8')).hexdigest().lower()
@@ -130,8 +140,7 @@ class DanaPaymentService:
             print(f"String to sign: {stringToSign}")
 
             # Load RSA private key
-            # Note: pemKey is already formatted correctly by the robust logic above
-            pkey = RSA.importKey(pemKey)
+            pkey = RSA.importKey(privateKey)
 
             # Sign with RSA private key
             signer = PKCS1_v1_5.new(pkey)
