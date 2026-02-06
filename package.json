@@ -1,0 +1,32 @@
+{
+  "name": "be-dana",
+  "version": "1.0.0",
+  "description": "Service API untuk pengelolaan zakat dan donasi, terintegrasi dengan payment gateway DANA.",
+  "main": "index.js",
+  "scripts": {
+    "test": "cypress run",
+    "test:open": "cypress open",
+    "test:uat": "cypress run --spec 'cypress/e2e/uat/**/*.cy.js'",
+    "test:payment": "cypress run --spec 'cypress/e2e/uat/direct-debit-payment.cy.js'",
+    "test:webhook": "cypress run --spec 'cypress/e2e/uat/payment-finish-notify.cy.js'",
+    "test:report": "cypress run --reporter mochawesome"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saefulmuminin/be-dana.git"
+  },
+  "keywords": ["dana", "payment", "api", "testing", "uat"],
+  "author": "BAZNAS Cinta Zakat",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/saefulmuminin/be-dana/issues"
+  },
+  "homepage": "https://github.com/saefulmuminin/be-dana#readme",
+  "devDependencies": {
+    "cypress": "^13.6.3",
+    "mochawesome": "^7.1.3",
+    "mochawesome-merge": "^4.3.0",
+    "mochawesome-report-generator": "^6.2.0"
+  }
+}

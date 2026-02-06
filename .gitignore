@@ -38,3 +38,18 @@ Miniconda3-latest-MacOSX-x86_64.sh
 secrets.yaml
 *.pem
 *.key
+
+# Node.js / NPM
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Cypress
+cypress/videos/
+cypress/screenshots/
+cypress/reports/
+cypress/downloads/
+cypress.env.json
