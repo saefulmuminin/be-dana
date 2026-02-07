@@ -183,10 +183,11 @@ class DanaPaymentService:
             externalId = f"EXT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
 
             # Prepare request body sesuai DANA SNAP API Direct Debit Payment
-            # Ultra-minimal required fields - trying without productCode and MCC
+            # Sesuai feedback tim DANA: tambah productCode, fix sourcePlatform
             requestBody = {
                 "partnerReferenceNo": orderData['partner_reference_no'],
                 "merchantId": Config.DANA_MERCHANT_ID,
+                "productCode": "51051000100000000001",
                 "amount": {
                     "value": f"{orderData['total_bayar']:.2f}",
                     "currency": "IDR"
@@ -196,7 +197,7 @@ class DanaPaymentService:
                         "orderTitle": f"Donasi dari {orderData.get('nama_lengkap', 'Hamba Allah')}"[:64]  # Max 64 chars
                     },
                     "envInfo": {
-                        "sourcePlatform": "MINIPROGRAM",
+                        "sourcePlatform": "MINI_PROGRAM",
                         "terminalType": "APP",
                         "orderTerminalType": "APP"
                     }
