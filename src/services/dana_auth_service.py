@@ -238,48 +238,47 @@ class DanaAuthService:
             externalId = data.get('external_id') or str(uuid.uuid4())
             authCode = data.get('auth_code')
             frontendUserInfo = data.get('user_info') or {}
-            isDevMode = data.get('dev_mode', False)
 
             print(f"[AUTH] === Seamless Login ===")
             print(f"[AUTH] externalId: {externalId}")
-            print(f"[AUTH] hasAuthCode: {bool(authCode)}, devMode: {isDevMode}")
+            print(f"[AUTH] hasAuthCode: {bool(authCode)}")
+            print(f"[AUTH] frontendUserInfo: {json.dumps(frontendUserInfo)}")
+
+            if not authCode:
+                return Response.error("auth_code wajib diisi. Gunakan my.getAuthCode() di mini app.", 400)
 
             # =============================================================
             # Step 1-2: Exchange authCode & Get real user info dari DANA
             # =============================================================
             danaUserInfo = {}
             danaAccessToken = None
+            exchangeError = None
 
-            if authCode and not authCode.startswith('DEV_MODE_'):
-                # REAL authCode dari my.getAuthCode() pada real device
-                print(f"[AUTH] Real authCode detected, exchanging with DANA API...")
+            print(f"[AUTH] Exchanging authCode with DANA API...")
 
-                # Exchange authCode → accessToken
-                tokenResult = self._exchangeAuthCode(authCode)
+            # Exchange authCode → accessToken
+            tokenResult = self._exchangeAuthCode(authCode)
 
-                if tokenResult.get('success'):
-                    danaAccessToken = tokenResult.get('accessToken')
-                    print(f"[AUTH] accessToken obtained: {danaAccessToken[:20]}...")
+            if tokenResult.get('success'):
+                danaAccessToken = tokenResult.get('accessToken')
+                print(f"[AUTH] accessToken obtained: {danaAccessToken[:20]}...")
 
-                    # Query real user info dari DANA
-                    userResult = self._queryUserInfo(danaAccessToken)
+                # Query real user info dari DANA
+                userResult = self._queryUserInfo(danaAccessToken)
 
-                    if userResult.get('success'):
-                        danaUserInfo = {
-                            'phone': userResult.get('phone', ''),
-                            'email': userResult.get('email', ''),
-                            'name': userResult.get('name', '')
-                        }
-                        print(f"[AUTH] DANA user: phone={danaUserInfo['phone']}, email={danaUserInfo['email']}")
-                    else:
-                        print(f"[AUTH] User query failed: {userResult.get('error')} - using frontend info")
+                if userResult.get('success'):
+                    danaUserInfo = {
+                        'phone': userResult.get('phone', ''),
+                        'email': userResult.get('email', ''),
+                        'name': userResult.get('name', '')
+                    }
+                    print(f"[AUTH] DANA user: phone={danaUserInfo['phone']}, email={danaUserInfo['email']}")
                 else:
-                    print(f"[AUTH] Token exchange failed: {tokenResult.get('error')} - using frontend info")
+                    exchangeError = f"User query failed: {userResult.get('error')}"
+                    print(f"[AUTH] {exchangeError} - using frontend info as fallback")
             else:
-                if isDevMode:
-                    print(f"[AUTH] DEV MODE - using frontend user info")
-                else:
-                    print(f"[AUTH] No authCode - using frontend user info")
+                exchangeError = f"Token exchange failed: {tokenResult.get('error')}"
+                print(f"[AUTH] {exchangeError} - using frontend info as fallback")
 
             # =============================================================
             # Step 3: Merge user info (DANA API data > frontend data)
@@ -339,7 +338,7 @@ class DanaAuthService:
                            {'external_id': externalId, 'dana_linked': bool(danaAccessToken)},
                            200, {'user_id': user.get('id')})
 
-            return Response.success(data={
+            responseData = {
                 "token": jwtToken,
                 "user": {
                     "id": user.get('id'),
@@ -351,7 +350,13 @@ class DanaAuthService:
                 "externalId": externalId,
                 "dbUser": dbUser,
                 "danaLinked": bool(danaAccessToken)
-            }, message="Login berhasil")
+            }
+
+            # Include exchange error for debugging (if DANA API failed but we still proceeded)
+            if exchangeError:
+                responseData["danaExchangeError"] = exchangeError
+
+            return Response.success(data=responseData, message="Login berhasil")
 
         except Exception as e:
             print(f"[AUTH] Login error: {str(e)}")
