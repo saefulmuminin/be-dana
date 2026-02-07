@@ -206,8 +206,9 @@ class DanaAuthService:
     def applyToken(self, data):
         """Terima auth code dari Mini App"""
         try:
-            authCode = data.get('auth_code')
-            externalId = data.get('external_id') or str(uuid.uuid4())
+            # Accept multiple possible key names from frontend (snake_case or camelCase)
+            authCode = data.get('auth_code') or data.get('authCode') or data.get('authcode')
+            externalId = data.get('external_id') or data.get('externalId') or str(uuid.uuid4())
 
             if not authCode:
                 return Response.error("Auth code wajib diisi", 400)

@@ -61,7 +61,8 @@ class Config:
     DANA_CHANNEL_ID = os.getenv("DANA_CHANNEL_ID", "95221")
 
     # Origin domain
-    DANA_ORIGIN = os.getenv("DANA_ORIGIN", "https://cintazakat.id")
+    # Origin domain used when communicating with DANA dashboard / whitelist
+    DANA_ORIGIN = os.getenv("DANA_ORIGIN", "https://be-dana.vercel.app")
 
     # ==========================================================================
     # CALLBACK URLS (Input ini ke Dashboard DANA)
