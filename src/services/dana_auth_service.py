@@ -179,41 +179,76 @@ class DanaAuthService:
             return Response.error(f"Seamless login gagal: {str(e)}", 500)
 
     def _getOrCreateUser(self, externalId, userInfo):
-        """Get existing user atau create baru"""
+        """
+        Get existing user atau create baru
+
+        Search priority:
+        1. external_id (returning DANA users)
+        2. email (match dengan user existing di server)
+        3. phone (fallback match)
+        4. Create new user jika tidak ditemukan
+        """
         try:
-            # Cari user berdasarkan external_id atau email
             email = userInfo.get('email')
             phone = userInfo.get('phone')
 
             user = None
 
-            if email:
-                user = self.userModel.findByEmail(email)
+            # 1. Cari by external_id (returning user dari DANA)
+            if externalId:
+                try:
+                    user = self.userModel.findByDanaExternalId(externalId)
+                    if user:
+                        print(f"User found by external_id: {user.get('id')}")
+                except:
+                    pass
 
+            # 2. Cari by email (match dengan login server existing)
+            if not user and email:
+                user = self.userModel.findByEmail(email)
+                if user:
+                    print(f"User found by email: {user.get('id')} ({email})")
+
+            # 3. Cari by phone number
             if not user and phone:
                 user = self.userModel.findByPhone(phone)
+                if user:
+                    print(f"User found by phone: {user.get('id')} ({phone})")
 
             if not user:
-                # Create new user
+                # 4. Create new user
+                print(f"Creating new user: email={email}, phone={phone}")
                 userData = {
                     'nama': userInfo.get('name', f'User_{externalId[:8]}'),
                     'email': email or f'{externalId}@dana.miniapp',
                     'no_hp': phone,
                     'external_id': externalId,
+                    'dana_external_id': externalId,
                     'created_date': datetime.now(),
                     'is_active': 'Y'
                 }
                 userId = self.userModel.create(userData)
                 user = self.userModel.findById(userId)
+                print(f"New user created: {userId}")
             else:
-                # Update external_id jika belum ada
+                # Update external_id dan dana_external_id jika belum ada
                 if not user.get('external_id'):
                     self.userModel.updateExternalId(user['id'], externalId)
+                if not user.get('dana_external_id'):
+                    try:
+                        self.userModel.updateDanaToken(user['id'], {
+                            'dana_external_id': externalId
+                        })
+                    except:
+                        pass
+                print(f"Existing user linked with DANA external_id: {user.get('id')}")
 
             return user
 
         except Exception as e:
             print(f"Get/Create user error: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def _generateJwt(self, user):
