@@ -194,7 +194,7 @@ class DanaPaymentService:
                 },
                 "additionalInfo": {
                     "order": {
-                        "orderTitle": f"Donasi dari {orderData.get('nama_lengkap', 'Hamba Allah')}"[:64]  # Max 64 chars
+                        "orderTitle": f"Donasi dari{orderData.get('nama_lengkap', 'Hamba Allah')}"[:64]  # Max 64 chars
                     },
                     "envInfo": {
                         "sourcePlatform": "MINI_PROGRAM",
