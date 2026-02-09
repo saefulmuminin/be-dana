@@ -90,11 +90,11 @@ class DanaAuthService:
     def _exchangeAuthCode(self, authCode):
         """
         Exchange authCode dari my.getAuthCode() → accessToken via DANA API
-        POST /v1.0/access-token/b2b2c
+        POST /v2/authorizations/applyToken (sesuai dokumentasi resmi DANA seamless login)
         """
         try:
             baseUrl = Config.DANA_BASE_URL
-            endpoint = "/v1.0/access-token/b2b2c"
+            endpoint = "/v2/authorizations/applyToken"
             fullUrl = f"{baseUrl}{endpoint}"
 
             jakartaTz = timezone(timedelta(hours=7))
@@ -102,7 +102,10 @@ class DanaAuthService:
 
             requestBody = {
                 "grantType": "AUTHORIZATION_CODE",
-                "authCode": authCode
+                "authCode": authCode,
+                "env": {
+                    "terminalType": "MINI_APP"
+                }
             }
 
             signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
@@ -149,28 +152,28 @@ class DanaAuthService:
     def _queryUserInfo(self, accessToken):
         """
         Query user info dari DANA menggunakan accessToken
-        Endpoint bisa: /v1.0/user/profile/query atau /v1.0/registration/account/inquiry
+        Endpoint: /v1/customers/user/inquiryUserInfoByAccessToken (sesuai dokumentasi resmi)
         """
         try:
             baseUrl = Config.DANA_BASE_URL
-            endpoint = "/v1.0/registration/account/inquiry"
+            endpoint = "/v1/customers/user/inquiryUserInfoByAccessToken"
             fullUrl = f"{baseUrl}{endpoint}"
 
             jakartaTz = timezone(timedelta(hours=7))
             timestamp = datetime.now(jakartaTz).strftime('%Y-%m-%dT%H:%M:%S+07:00')
 
-            requestBody = {}
+            requestBody = {
+                "accessToken": accessToken
+            }
 
             signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
 
             headers = {
                 'Content-Type': 'application/json',
                 'X-TIMESTAMP': timestamp,
-                'X-PARTNER-ID': Config.DANA_CLIENT_ID,
+                'X-CLIENT-KEY': Config.DANA_CLIENT_ID,
                 'X-EXTERNAL-ID': f"UQ-{uuid.uuid4().hex[:12].upper()}",
-                'CHANNEL-ID': Config.DANA_CHANNEL_ID,
-                'X-SIGNATURE': signature,
-                'Authorization': f"Bearer {accessToken}"
+                'X-SIGNATURE': signature
             }
 
             print(f"[AUTH] Query user info → {fullUrl}")
