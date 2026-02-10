@@ -1,16 +1,19 @@
 """
-DANA Mini Program Authentication Service
+DANA Mini Program Authentication Service (MINI_DANA)
 
-Flow:
-1. Mini app call my.getAuthCode({ scopes: ['USER_LOGIN_ID', 'USER_CONTACTINFO_EMAIL'] })
+Flow (Partner Webview Onboarding):
+1. Mini app call my.getAuthCode({ scopes: ['MINI_PROGRAM','CASHIER','QUERY_BALANCE','DEFAULT_BASIC_PROFILE','MINI_DANA','PUBLIC_ID','KYC_INFO'] })
 2. Mini app kirim authCode ke backend
-3. Backend exchange authCode ke DANA API -> dapat accessToken
-4. Backend query user info ke DANA API -> dapat phone/email asli dari akun DANA
-5. Backend create/find user di database berdasarkan email -> generate JWT
+3. Backend exchange authCode ke DANA Apply Token API -> dapat accessToken
+   - Ref: https://dashboard.dana.id/api-docs/read/110
+4. Backend call Query User Profile API (BE-to-BE) -> dapat USER_LOGIN_ID, dll
+   - Ref: https://dashboard.dana.id/api-docs/read/38
+5. Backend create/find user di database -> generate JWT
 6. Return JWT token ke mini app
 
 API Reference:
-- Apply Token (B2B2C): POST /v1.0/access-token/b2b2c
+- Apply Token: POST /v1/authorizations/applyToken
+- Query User Profile: POST /v1.0/emoney/queryUserProfile
 """
 
 from src.models.user_model import UserModel
@@ -89,12 +92,13 @@ class DanaAuthService:
 
     def _exchangeAuthCode(self, authCode):
         """
-        Exchange authCode dari my.getAuthCode() → accessToken via DANA API
-        POST /v2/authorizations/applyToken (sesuai dokumentasi resmi DANA seamless login)
+        Exchange authCode dari my.getAuthCode() -> accessToken via DANA Apply Token API
+        POST /v1/authorizations/applyToken
+        Ref: https://dashboard.dana.id/api-docs/read/110
         """
         try:
             baseUrl = Config.DANA_BASE_URL
-            endpoint = "/v2/authorizations/applyToken"
+            endpoint = "/v1/authorizations/applyToken"
             fullUrl = f"{baseUrl}{endpoint}"
 
             jakartaTz = timezone(timedelta(hours=7))
@@ -103,9 +107,7 @@ class DanaAuthService:
             requestBody = {
                 "grantType": "AUTHORIZATION_CODE",
                 "authCode": authCode,
-                "env": {
-                    "terminalType": "MINI_APP"
-                }
+                "customerBelongsTo": "DANA"
             }
 
             signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
@@ -119,29 +121,54 @@ class DanaAuthService:
                 'X-SIGNATURE': signature
             }
 
-            print(f"[AUTH] Exchange authCode → {fullUrl}")
+            print(f"[AUTH] Exchange authCode -> {fullUrl}")
             print(f"[AUTH] authCode: {authCode[:15]}...")
 
             response = requests.post(fullUrl, json=requestBody, headers=headers, timeout=30)
-            print(f"[AUTH] DANA token response: {response.status_code} → {response.text[:300]}")
+            print(f"[AUTH] DANA token response: {response.status_code} -> {response.text[:300]}")
 
             self.logApiCall(endpoint, 'POST', {'authCode': authCode[:10] + '***'},
                            response.status_code, response.text[:500])
 
             if response.ok:
                 respData = response.json()
-                responseCode = respData.get('responseCode', '')
 
-                if responseCode == '2007300' or respData.get('accessToken'):
+                # DANA Apply Token response format:
+                # { "result": { "resultCode": "SUCCESS", "resultStatus": "S" },
+                #   "accessToken": "...", "refreshToken": "...",
+                #   "accessTokenExpiryTime": "...", "userLoginId": "..." }
+                # OR legacy format:
+                # { "responseCode": "2007300", "accessToken": "...", ... }
+
+                resultObj = respData.get('result', {})
+                resultCode = resultObj.get('resultCode', '') or respData.get('responseCode', '')
+                resultStatus = resultObj.get('resultStatus', '')
+
+                isSuccess = (
+                    resultStatus == 'S' or
+                    resultCode == 'SUCCESS' or
+                    resultCode == '2007300' or
+                    respData.get('accessToken')
+                )
+
+                if isSuccess:
+                    accessToken = respData.get('accessToken')
                     print(f"[AUTH] Got accessToken!")
+
+                    # userLoginId bisa langsung ada di response Apply Token
+                    userLoginId = respData.get('userLoginId', '')
+
                     return {
                         'success': True,
-                        'accessToken': respData.get('accessToken'),
+                        'accessToken': accessToken,
                         'refreshToken': respData.get('refreshToken'),
-                        'expiresIn': respData.get('expiresIn', 900)
+                        'expiresIn': respData.get('expiresIn', 900),
+                        'accessTokenExpiryTime': respData.get('accessTokenExpiryTime'),
+                        'userLoginId': userLoginId
                     }
                 else:
-                    return {'success': False, 'error': f"{responseCode}: {respData.get('responseMessage', '')}"}
+                    errMsg = resultObj.get('resultMessage', '') or respData.get('responseMessage', '')
+                    return {'success': False, 'error': f"{resultCode}: {errMsg}"}
             else:
                 return {'success': False, 'error': f"HTTP {response.status_code}"}
 
@@ -149,57 +176,87 @@ class DanaAuthService:
             print(f"[AUTH] Exchange failed: {str(e)}")
             return {'success': False, 'error': str(e)}
 
-    def _queryUserInfo(self, accessToken):
+    def _queryUserProfile(self, accessToken):
         """
-        Query user info dari DANA menggunakan accessToken
-        Endpoint: /v1/customers/user/inquiryUserInfoByAccessToken (sesuai dokumentasi resmi)
+        Query User Profile dari DANA menggunakan accessToken (BE-to-BE interaction)
+        Untuk mendapatkan USER_LOGIN_ID dan data lainnya.
+        Ref: https://dashboard.dana.id/api-docs/read/38
         """
         try:
             baseUrl = Config.DANA_BASE_URL
-            endpoint = "/v1/customers/user/inquiryUserInfoByAccessToken"
+            endpoint = "/v1.0/emoney/queryUserProfile"
             fullUrl = f"{baseUrl}{endpoint}"
 
             jakartaTz = timezone(timedelta(hours=7))
             timestamp = datetime.now(jakartaTz).strftime('%Y-%m-%dT%H:%M:%S+07:00')
+            externalId = f"UQ-{uuid.uuid4().hex[:12].upper()}"
 
             requestBody = {
-                "accessToken": accessToken
+                "additionalInfo": {
+                    "accessToken": accessToken
+                }
             }
 
             signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
 
             headers = {
                 'Content-Type': 'application/json',
+                'Authorization': f"Bearer {accessToken}",
                 'X-TIMESTAMP': timestamp,
-                'X-CLIENT-KEY': Config.DANA_CLIENT_ID,
-                'X-EXTERNAL-ID': f"UQ-{uuid.uuid4().hex[:12].upper()}",
+                'X-PARTNER-ID': Config.DANA_CLIENT_ID,
+                'X-EXTERNAL-ID': externalId,
                 'X-SIGNATURE': signature
             }
 
-            print(f"[AUTH] Query user info → {fullUrl}")
+            print(f"[AUTH] Query User Profile -> {fullUrl}")
 
             response = requests.post(fullUrl, json=requestBody, headers=headers, timeout=30)
-            print(f"[AUTH] User info response: {response.status_code} → {response.text[:300]}")
+            print(f"[AUTH] User profile response: {response.status_code} -> {response.text[:300]}")
 
             self.logApiCall(endpoint, 'POST', {'token': '***'},
                            response.status_code, response.text[:500])
 
             if response.ok:
                 respData = response.json()
-                # DANA bisa return di berbagai field tergantung API version
+
+                resultObj = respData.get('result', {})
+                resultCode = resultObj.get('resultCode', '') or respData.get('responseCode', '')
+                resultStatus = resultObj.get('resultStatus', '')
+
+                isSuccess = (
+                    resultStatus == 'S' or
+                    resultCode == 'SUCCESS' or
+                    (resultCode and resultCode.startswith('2'))
+                )
+
+                # Parse user info dari berbagai format response DANA
                 userInfo = respData.get('userInfo') or respData.get('additionalInfo') or respData
+                userLoginId = (
+                    respData.get('userLoginId') or
+                    userInfo.get('userLoginId') or
+                    userInfo.get('loginId') or
+                    userInfo.get('phone') or
+                    userInfo.get('mobile', '')
+                )
+
                 return {
-                    'success': True,
-                    'phone': userInfo.get('loginId') or userInfo.get('phone') or userInfo.get('mobile', ''),
+                    'success': isSuccess or bool(userLoginId),
+                    'userLoginId': userLoginId,
+                    'phone': userLoginId,  # userLoginId biasanya nomor HP
                     'email': userInfo.get('email', ''),
-                    'name': userInfo.get('name') or userInfo.get('nickName') or userInfo.get('fullName', ''),
+                    'name': (
+                        userInfo.get('name') or
+                        userInfo.get('nickName') or
+                        userInfo.get('fullName', '')
+                    ),
+                    'publicUserId': userInfo.get('publicUserId', ''),
                     'raw': respData
                 }
             else:
                 return {'success': False, 'error': f"HTTP {response.status_code}"}
 
         except Exception as e:
-            print(f"[AUTH] Query user info failed: {str(e)}")
+            print(f"[AUTH] Query user profile failed: {str(e)}")
             return {'success': False, 'error': str(e)}
 
     # =========================================================================
@@ -209,7 +266,6 @@ class DanaAuthService:
     def applyToken(self, data):
         """Terima auth code dari Mini App"""
         try:
-            # Accept multiple possible key names from frontend (snake_case or camelCase)
             authCode = data.get('auth_code') or data.get('authCode') or data.get('authcode')
             externalId = data.get('external_id') or data.get('externalId') or str(uuid.uuid4())
 
@@ -229,13 +285,13 @@ class DanaAuthService:
 
     def seamlessLogin(self, data):
         """
-        Seamless Login - Exchange authCode, get real user info, generate JWT
+        Seamless Login - Exchange authCode, Query User Profile (BE-to-BE), generate JWT
 
-        Flow:
+        Flow (Partner Webview Onboarding):
         1. Terima authCode dari frontend (dari my.getAuthCode)
-        2. Exchange authCode ke DANA API → accessToken
-        3. Query user info dari DANA API → real phone/email
-        4. Create/find user di database (match by email)
+        2. Exchange authCode ke DANA Apply Token API -> accessToken + userLoginId
+        3. Query User Profile (BE-to-BE) -> USER_LOGIN_ID, data lengkap
+        4. Create/find user di database
         5. Return JWT token
         """
         try:
@@ -243,43 +299,55 @@ class DanaAuthService:
             authCode = data.get('auth_code')
             frontendUserInfo = data.get('user_info') or {}
 
-            print(f"[AUTH] === Seamless Login ===")
+            print(f"[AUTH] === Seamless Login (MINI_DANA) ===")
             print(f"[AUTH] externalId: {externalId}")
             print(f"[AUTH] hasAuthCode: {bool(authCode)}")
-            print(f"[AUTH] frontendUserInfo: {json.dumps(frontendUserInfo)}")
 
             if not authCode:
                 return Response.error("auth_code wajib diisi. Gunakan my.getAuthCode() di mini app.", 400)
 
             # =============================================================
-            # Step 1-2: Exchange authCode & Get real user info dari DANA
+            # Step 1: Exchange authCode -> accessToken via Apply Token API
             # =============================================================
             danaUserInfo = {}
             danaAccessToken = None
             exchangeError = None
 
-            print(f"[AUTH] Exchanging authCode with DANA API...")
+            print(f"[AUTH] Step 1: Exchanging authCode with DANA Apply Token API...")
 
-            # Exchange authCode → accessToken
             tokenResult = self._exchangeAuthCode(authCode)
 
             if tokenResult.get('success'):
                 danaAccessToken = tokenResult.get('accessToken')
+                userLoginId = tokenResult.get('userLoginId', '')
                 print(f"[AUTH] accessToken obtained: {danaAccessToken[:20]}...")
+                if userLoginId:
+                    print(f"[AUTH] userLoginId from Apply Token: {userLoginId}")
 
-                # Query real user info dari DANA
-                userResult = self._queryUserInfo(danaAccessToken)
+                # =============================================================
+                # Step 2: Query User Profile (BE-to-BE) untuk data lengkap
+                # =============================================================
+                print(f"[AUTH] Step 2: Querying User Profile (BE-to-BE)...")
+                profileResult = self._queryUserProfile(danaAccessToken)
 
-                if userResult.get('success'):
+                if profileResult.get('success'):
                     danaUserInfo = {
-                        'phone': userResult.get('phone', ''),
-                        'email': userResult.get('email', ''),
-                        'name': userResult.get('name', '')
+                        'phone': profileResult.get('userLoginId') or profileResult.get('phone') or userLoginId,
+                        'email': profileResult.get('email', ''),
+                        'name': profileResult.get('name', ''),
+                        'publicUserId': profileResult.get('publicUserId', '')
                     }
-                    print(f"[AUTH] DANA user: phone={danaUserInfo['phone']}, email={danaUserInfo['email']}")
+                    print(f"[AUTH] DANA profile: userLoginId={danaUserInfo['phone']}, email={danaUserInfo['email']}")
                 else:
-                    exchangeError = f"User query failed: {userResult.get('error')}"
-                    print(f"[AUTH] {exchangeError} - using frontend info as fallback")
+                    # Fallback: gunakan userLoginId dari Apply Token response
+                    print(f"[AUTH] Profile query failed: {profileResult.get('error')} - using Apply Token data")
+                    if userLoginId:
+                        danaUserInfo = {
+                            'phone': userLoginId,
+                            'email': '',
+                            'name': '',
+                            'publicUserId': ''
+                        }
             else:
                 exchangeError = f"Token exchange failed: {tokenResult.get('error')}"
                 print(f"[AUTH] {exchangeError} - using frontend info as fallback")
@@ -290,7 +358,8 @@ class DanaAuthService:
             userInfo = {
                 'name': danaUserInfo.get('name') or frontendUserInfo.get('name', ''),
                 'phone': danaUserInfo.get('phone') or frontendUserInfo.get('phone', ''),
-                'email': danaUserInfo.get('email') or frontendUserInfo.get('email', '')
+                'email': danaUserInfo.get('email') or frontendUserInfo.get('email', ''),
+                'publicUserId': danaUserInfo.get('publicUserId', '')
             }
             print(f"[AUTH] Final user info: {json.dumps(userInfo)}")
 
@@ -326,7 +395,10 @@ class DanaAuthService:
                 try:
                     self.userModel.updateDanaToken(user['id'], {
                         'dana_access_token': danaAccessToken,
-                        'dana_external_id': externalId
+                        'dana_refresh_token': tokenResult.get('refreshToken'),
+                        'dana_token_expires_at': tokenResult.get('accessTokenExpiryTime'),
+                        'dana_external_id': externalId,
+                        'dana_user_id': userInfo.get('publicUserId') or userInfo.get('phone')
                     })
                 except:
                     pass
@@ -356,7 +428,6 @@ class DanaAuthService:
                 "danaLinked": bool(danaAccessToken)
             }
 
-            # Include exchange error for debugging (if DANA API failed but we still proceeded)
             if exchangeError:
                 responseData["danaExchangeError"] = exchangeError
 
@@ -479,7 +550,7 @@ class DanaAuthService:
 
     def getUserInfo(self, accessToken):
         """Placeholder"""
-        return Response.success(data={}, message="Use my.getOpenUserInfo() in mini app")
+        return Response.success(data={}, message="Use QueryUserProfile API (BE-to-BE)")
 
     # =========================================================================
     # Logging

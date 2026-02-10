@@ -1,19 +1,20 @@
 """
 DANA Mini Program Payment Service
-Untuk integrasi pembayaran di DANA Mini App
+Untuk integrasi pembayaran di DANA Mini App (Partner Webview Onboarding)
 
-Flow Mini Program Payment:
+Flow Mini Program Payment (Partner Webview Onboarding):
 1. User isi form donasi di mini app
-2. Mini app call backend /create-order -> backend return orderId + tradeNO
-3. Backend call DANA Direct Debit Payment API -> dapat referenceNo
-4. Mini app call my.tradePay(tradeNO: referenceNo)
-5. DANA SDK handle pembayaran (popup PIN muncul)
-6. DANA kirim webhook ke backend untuk update status
+2. Mini app call backend /create-order
+3. Backend call DANA Direct Debit Payment API -> dapat webRedirectUrl (checkoutUrl)
+4. Backend return checkoutUrl ke mini app
+5. Mini app call my.tradePay({ paymentUrl: checkoutUrl })
+6. DANA SDK handle pembayaran (popup PIN muncul)
+7. DANA kirim Finish Notify webhook ke backend untuk update status
 
 API Reference:
 - Endpoint: /rest/redirection/v1.0/debit/payment-host-to-host
 - Signature: RSA asymmetric (PKCS1_v1_5 + SHA256)
-- Response: referenceNo digunakan sebagai tradeNO untuk my.tradePay
+- Response: webRedirectUrl digunakan sebagai paymentUrl untuk my.tradePay
 """
 
 from src.models.donation_model import DonationModel
@@ -166,7 +167,8 @@ class DanaPaymentService:
         Returns:
             {
                 'success': bool,
-                'referenceNo': str,  # tradeNO untuk my.tradePay
+                'referenceNo': str,
+                'checkoutUrl': str,  # webRedirectUrl untuk my.tradePay({ paymentUrl })
                 'error': str
             }
         """
@@ -183,7 +185,7 @@ class DanaPaymentService:
             externalId = f"EXT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
 
             # Prepare request body sesuai DANA SNAP API Direct Debit Payment
-            # Sesuai feedback tim DANA: tambah productCode, fix sourcePlatform
+            # Sesuai Partner Webview Onboarding: tambah mcc (required), productCode, envInfo
             requestBody = {
                 "partnerReferenceNo": orderData['partner_reference_no'],
                 "merchantId": Config.DANA_MERCHANT_ID,
@@ -193,8 +195,10 @@ class DanaPaymentService:
                     "currency": "IDR"
                 },
                 "additionalInfo": {
+                    "mcc": "8398",  # Required - Charitable Organizations MCC code
+                    "productCode": "51051000100000000001",
                     "order": {
-                        "orderTitle": f"Donasi dari{orderData.get('nama_lengkap', 'Hamba Allah')}"[:64]  # Max 64 chars
+                        "orderTitle": f"Donasi dari {orderData.get('nama_lengkap', 'Hamba Allah')}"[:64]  # Max 64 chars
                     },
                     "envInfo": {
                         "sourcePlatform": "MINI_PROGRAM",
@@ -272,12 +276,13 @@ class DanaPaymentService:
                         print(f"Warning: referenceNo not found in response. Using partnerReferenceNo.")
                         referenceNo = respData.get('partnerReferenceNo') or orderData['partner_reference_no']
 
-                    print(f"✓ DANA API success. referenceNo: {referenceNo}")
+                    checkoutUrl = respData.get('webRedirectUrl')
+                    print(f"✓ DANA API success. referenceNo: {referenceNo}, checkoutUrl: {checkoutUrl}")
 
                     return {
                         'success': True,
                         'referenceNo': referenceNo,
-                        'webRedirectUrl': respData.get('webRedirectUrl'),
+                        'checkoutUrl': checkoutUrl,  # webRedirectUrl untuk my.tradePay({ paymentUrl })
                         'danaResponse': respData
                     }
                 else:
@@ -356,17 +361,19 @@ class DanaPaymentService:
             tradeNO = orderData['order_id']  # Default to local orderId
             danaReferenceNo = None
 
+            checkoutUrl = None
+
             # Check if DANA credentials are configured
             if Config.DANA_CLIENT_ID and Config.DANA_PRIVATE_KEY and Config.DANA_MERCHANT_ID:
                 print("Calling DANA Direct Debit Payment API...")
                 danaResult = self._callDanaPaymentApi(orderData)
 
                 if danaResult['success']:
-                    # Use referenceNo from DANA as tradeNO untuk my.tradePay
                     danaReferenceNo = danaResult['referenceNo']
+                    checkoutUrl = danaResult.get('checkoutUrl')  # webRedirectUrl untuk my.tradePay
                     tradeNO = danaReferenceNo
                     danaApiCalled = True
-                    print(f"✓ DANA API success, tradeNO: {tradeNO}")
+                    print(f"✓ DANA API success, referenceNo: {tradeNO}, checkoutUrl: {checkoutUrl}")
 
                     # Update database with DANA referenceNo
                     if dbSaved:
@@ -411,7 +418,8 @@ class DanaPaymentService:
 
             return Response.success(data={
                 "orderId": orderData['order_id'],
-                "tradeNO": tradeNO,  # Ini yang dipakai untuk my.tradePay
+                "tradeNO": tradeNO,
+                "checkoutUrl": checkoutUrl,  # webRedirectUrl untuk my.tradePay({ paymentUrl })
                 "partnerReferenceNo": orderData['partner_reference_no'],
                 "amount": int(orderData['total_bayar']),
                 "nominal": int(orderData['nominal']),
@@ -419,7 +427,7 @@ class DanaPaymentService:
                 "status": "pending",
                 "dbSaved": dbSaved,
                 "danaApiCalled": danaApiCalled,
-                "message": "Order berhasil dibuat. Gunakan tradeNO untuk my.tradePay()"
+                "message": "Order berhasil dibuat. Gunakan checkoutUrl untuk my.tradePay({ paymentUrl })"
             }, message="Order berhasil dibuat")
 
         except Exception as e:
