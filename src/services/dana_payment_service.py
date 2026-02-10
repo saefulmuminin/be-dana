@@ -18,7 +18,7 @@ API Reference:
 """
 
 from src.models.donation_model import DonationModel
-from src.models.master_models import RefPaymentModel, RefCampaignModel
+from src.models.master_models import RefPaymentModel, RefCampaignModel, RefKantorModel
 from src.services.simba_service import SimbaService
 from src.utils.response import Response
 from src.utils.database import Database
@@ -58,6 +58,7 @@ class DanaPaymentService:
         self.donationModel = DonationModel()
         self.paymentModel = RefPaymentModel()
         self.campaignModel = RefCampaignModel()
+        self.kantorModel = RefKantorModel()
         self.simbaService = SimbaService()
         self.db = Database()
 
@@ -737,20 +738,80 @@ class DanaPaymentService:
         return statusMap.get(danaStatus.upper(), 'pending')
 
     def _syncToSimba(self, donation):
-        """Sync transaksi ke SIMBA setelah sukses"""
+        """
+        Sync transaksi ke SIMBA setelah pembayaran sukses
+        1. Register muzaki (jika belum punya NPWZ) -> dapat NPWZ
+        2. Save transaction ke SIMBA
+        """
         try:
             donation = self.donationModel.findByOrderId(donation['order_id'])
+            if not donation:
+                print(f"[SIMBA] Donation not found: {donation}")
+                return
 
+            # Get kantor data dari campaign -> ref_kantor
+            kantorData = None
+            campaignData = None
+            try:
+                campaignData = self.campaignModel.findById(donation.get('campaign_id'))
+                if campaignData and campaignData.get('kode_institusi'):
+                    kantorData = self.kantorModel.findByKode(str(campaignData['kode_institusi']))
+            except Exception as e:
+                print(f"[SIMBA] Failed to get kantor/campaign: {e}")
+
+            # Fallback ke Config jika kantorData tidak ditemukan
+            if not kantorData:
+                kantorData = {
+                    'kode_institusi': Config.SIMBA_ORG,
+                    'apikey': Config.SIMBA_KEY,
+                    'email': ''
+                }
+
+            # Lookup user phone dari adm_user berdasarkan email
+            try:
+                from src.models.user_model import UserModel
+                userModel = UserModel()
+                user = userModel.findByEmail(donation.get('email'))
+                if user and user.get('handphone'):
+                    donation['no_hp'] = user['handphone']
+            except Exception as e:
+                print(f"[SIMBA] Failed to lookup user phone: {e}")
+
+            # Step 1: Register muzaki jika belum punya NPWZ
             if not donation.get('npwz'):
-                npwz = self.simbaService.register_muzaki(donation, None)
+                print(f"[SIMBA] Registering muzaki: {donation.get('nama_lengkap')} ({donation.get('email')})")
+                npwz = self.simbaService.registerMuzaki(donation, kantorData)
                 if npwz:
                     self.donationModel.updateNpwz(donation['order_id'], npwz)
                     donation['npwz'] = npwz
+                    print(f"[SIMBA] NPWZ obtained: {npwz}")
+                else:
+                    print(f"[SIMBA] Failed to get NPWZ for {donation.get('email')}")
 
-            self.simbaService.save_transaction(donation)
+            # Step 2: Save transaction ke SIMBA
+            if donation.get('npwz'):
+                # Get program data dari campaign
+                programData = {'code': ''}
+                if campaignData and campaignData.get('program_id'):
+                    try:
+                        conn = self.db.getConnection()
+                        with conn.cursor() as cursor:
+                            cursor.execute("SELECT * FROM adm_program WHERE id = %s", (campaignData['program_id'],))
+                            prog = cursor.fetchone()
+                            if prog:
+                                programData = prog
+                    except Exception as e:
+                        print(f"[SIMBA] Failed to get program: {e}")
+
+                print(f"[SIMBA] Saving transaction: order={donation['order_id']}, npwz={donation['npwz']}")
+                self.simbaService.saveTransaction(donation, campaignData or {}, kantorData, programData)
+            else:
+                print(f"[SIMBA] Skipping saveTransaction - no NPWZ available")
 
         except Exception as e:
-            print(f"SIMBA sync failed: {str(e)}")
+            print(f"[SIMBA] Sync failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
     def finishPayment(self, data):
         """

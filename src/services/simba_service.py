@@ -7,32 +7,37 @@ class SimbaService:
     def registerMuzaki(self, donasiData, kantorData):
         payload = {
             'org': kantorData.get('kode_institusi'),
-            'key': kantorData.get('apikey'), 
+            'key': kantorData.get('apikey'),
             'nama': donasiData.get('nama_lengkap'),
             'alamat': '',
-            'handphone': '',
+            'handphone': donasiData.get('no_hp') or donasiData.get('handphone') or '',
             'nik': '',
             'email': donasiData.get('email'),
             'tanggal': datetime.now().strftime('%d/%m/%Y'),
-            'tipe': 'perorangan',
+            'tipe': donasiData.get('tipe', 'perorangan'),
             'gender': '1',
             'verifikasi': 'email',
-            'amil': kantorData.get('email')
+            'amil': kantorData.get('email') or ''
         }
         
         try:
             base = Config.SIMBA_URL.rstrip('/')
             endpoint = Config.API_MUZAKI_REGISTER.lstrip('/')
             url = f"{base}/{endpoint}"
-            
-            resp = requests.post(url, data=payload, verify=False) 
+
+            print(f"[SIMBA] registerMuzaki -> {url}")
+            print(f"[SIMBA] payload: nama={payload['nama']}, email={payload['email']}, hp={payload['handphone']}, org={payload['org']}")
+
+            resp = requests.post(url, data=payload, verify=False)
             data = resp.json()
-            
+
+            print(f"[SIMBA] registerMuzaki response: {data}")
+
             if data.get('status_code') == '000':
                 return data.get('npwz')
             return None
         except Exception as e:
-            print(f"SIMBA Register Error: {e}")
+            print(f"[SIMBA] Register Error: {e}")
             return None
 
     def saveTransaction(self, donasiData, campaignData, kantorData, programData):
