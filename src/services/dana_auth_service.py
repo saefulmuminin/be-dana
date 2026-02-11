@@ -287,8 +287,9 @@ class DanaAuthService:
             # Legacy Widget API Signature: SHA256withRSA(Private_Key, minified_json_string_of_request_object)
             
             # 1. Minify JSON string of the 'request' block
-            requestBodyStr = json.dumps(requestPayload['request'], separators=(',', ':'))
-            
+            requestBodyStr = json.dumps(requestPayload['request'], separators=(',', ':'), sort_keys=True)
+            print(f"[DEBUG] StringToSign (QueryProfile): {requestBodyStr}")
+
             # 2. Sign it using the custom signer (which does SHA256withRSA)
             signature = self._generateSignatureCustom(requestBodyStr)
             
