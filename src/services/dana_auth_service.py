@@ -284,14 +284,15 @@ class DanaAuthService:
             }
 
             # Generate Signature based on 'request' object (excluding signature field itself)
-            # Legacy Widget API Signature: SHA256withRSA(Private_Key, minified_json_string_of_request_object)
+            # Experiment: Use the same simple signature as Apply Token (client_id|timestamp)
+            # instead of signing the JSON body.
             
-            # 1. Minify JSON string of the 'request' block
-            requestBodyStr = json.dumps(requestPayload['request'], separators=(',', ':'), sort_keys=True)
-            print(f"[DEBUG] StringToSign (QueryProfile): {requestBodyStr}")
+            # 1. Simple String to Sign
+            stringToSign = f"{Config.DANA_CLIENT_ID}|{timestamp}"
+            print(f"[DEBUG] StringToSign (QueryProfile): {stringToSign}")
 
             # 2. Sign it using the custom signer (which does SHA256withRSA)
-            signature = self._generateSignatureCustom(requestBodyStr)
+            signature = self._generateSignatureCustom(stringToSign)
             
             if signature:
                 requestPayload['signature'] = signature
@@ -405,7 +406,7 @@ class DanaAuthService:
             frontendUserInfo = data.get('user_info') or {}
 
             print(f"[AUTH] === Seamless Login (MINI_DANA) ===")
-            print(f"[AUTH] SERVICE VERSION: v1.1-fix-signature-sortkeys")
+            print(f"[AUTH] SERVICE VERSION: v1.2-simple-signature")
             print(f"[AUTH] externalId: {externalId}")
             print(f"[AUTH] hasAuthCode: {bool(authCode)}")
 
