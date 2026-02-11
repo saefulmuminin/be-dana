@@ -17,6 +17,7 @@ API Reference:
 """
 
 from src.models.user_model import UserModel
+from src.models.muzaki_model import MuzakiModel
 from src.utils.response import Response
 from src.utils.database import Database
 from src.config.config import Config
@@ -49,6 +50,7 @@ class DanaAuthService:
 
     def __init__(self):
         self.userModel = UserModel()
+        self.muzakiModel = MuzakiModel()
         self.db = Database()
         self.jwtSecret = Config.JWT_SECRET
         self.jwtExpireHours = Config.JWT_EXPIRE_HOURS
@@ -411,7 +413,7 @@ class DanaAuthService:
             frontendUserInfo = data.get('user_info') or {}
 
             print(f"[AUTH] === Seamless Login (MINI_DANA) ===")
-            print(f"[AUTH] SERVICE VERSION: v1.8-fix-resources")
+            print(f"[AUTH] SERVICE VERSION: v1.9-muzaki-auto-create")
             print(f"[AUTH] externalId: {externalId}")
             print(f"[AUTH] hasAuthCode: {bool(authCode)}")
 
@@ -514,6 +516,47 @@ class DanaAuthService:
                     })
                 except:
                     pass
+
+            # =============================================================
+            # Step 4b: Ensure User is registered as Muzaki
+            # =============================================================
+            if user.get('id') and not user.get('muzaki_id'):
+                try:
+                    print(f"[AUTH] Checking Muzaki for user {user.get('id')}...")
+                    phone = user.get('no_hp') or user.get('handphone')
+                    email = user.get('email')
+                    
+                    muzaki = None
+                    # 1. Search by Phone/Email
+                    if phone:
+                        muzaki = self.muzakiModel.findByHandphone(phone)
+                    if not muzaki and email:
+                        muzaki = self.muzakiModel.findByEmail(email)
+                    
+                    muzakiId = None
+                    if muzaki:
+                        print(f"[AUTH] Found existing Muzaki: {muzaki.get('id')}")
+                        muzakiId = muzaki.get('id')
+                    else:
+                        print(f"[AUTH] Creating new Muzaki...")
+                        # Create new Muzaki
+                        muzakiData = {
+                            'nama': user.get('nama') or user.get('full_name'),
+                            'email': email or f"{externalId}@dana.miniapp", # Placeholder if empty
+                            'handphone': phone,
+                            'tipe': 'perorangan',
+                            'is_active': 'Y',
+                            'created_by': 'system (dana)'
+                        }
+                        muzakiId = self.muzakiModel.create(muzakiData)
+                        print(f"[AUTH] Created new Muzaki: {muzakiId}")
+
+                    if muzakiId:
+                        self.userModel.updateMuzakiId(user['id'], muzakiId)
+                        user['muzaki_id'] = muzakiId # Update local object for JWT/Response
+                except Exception as e:
+                    print(f"[AUTH] Failed to link Muzaki: {str(e)}")
+
 
             # =============================================================
             # Step 5: Generate JWT token
