@@ -256,6 +256,9 @@ class DanaAuthService:
             reqMsgId = str(uuid.uuid4()).replace('-', '')
 
             # Request Body sesuai dokumentasi DANA Widget API
+            # NOTE: Order of keys might matter for signature if we just dump the dict.
+            # User script uses: client_id, client_secret, access_token, reqTime, reqMsgId. 
+            # We follow that implicit structure.
             requestPayload = {
                 "request": {
                     "head": {
@@ -270,6 +273,7 @@ class DanaAuthService:
                     },
                     "body": {
                         "userResources": [
+                            "BALANCE",         # Added by user request
                             "LOGIN_ID",        # Phone number
                             "NICKNAME",        # Nickname
                             "FULLNAME",        # Full name
@@ -284,14 +288,17 @@ class DanaAuthService:
             }
 
             # Generate Signature based on 'request' object (excluding signature field itself)
-            # Experiment v1.4: Use standard SNAP Signature (Method:Endpoint:Hash:Timestamp)
-            # Even though it is placed in the body, the generation method might be standard.
+            # Experiment v1.5: Mimic Postman's JSON.stringify(jsonBody.request) 
+            # which produces Minified JSON (no spaces).
+            # AND use Custom RSA Signer (SHA256withRSA) on that string.
             
-            # Ensure the timestamp matches reqTime!
-            # _generateSignature uses the timestamp argument relative to the stringToSign
-            
-            signature = self._generateSignature("POST", endpoint, requestPayload['request'], timestamp)
-            print(f"[DEBUG] Generated SNAP Signature for QueryProfile")
+            # 1. Minify JSON string of the 'request' block
+            # separators=(',', ':') ensures no whitespace (minified)
+            requestBodyStr = json.dumps(requestPayload['request'], separators=(',', ':'))
+            print(f"[DEBUG] StringToSign (QueryProfile): {requestBodyStr}")
+
+            # 2. Sign it using the custom signer (which does SHA256withRSA)
+            signature = self._generateSignatureCustom(requestBodyStr)
             
             if signature:
                 requestPayload['signature'] = signature
@@ -405,7 +412,7 @@ class DanaAuthService:
             frontendUserInfo = data.get('user_info') or {}
 
             print(f"[AUTH] === Seamless Login (MINI_DANA) ===")
-            print(f"[AUTH] SERVICE VERSION: v1.4-snap-signature")
+            print(f"[AUTH] SERVICE VERSION: v1.5-balance-and-stringify")
             print(f"[AUTH] externalId: {externalId}")
             print(f"[AUTH] hasAuthCode: {bool(authCode)}")
 
@@ -449,10 +456,10 @@ class DanaAuthService:
                     print(f"[AUTH] Profile query failed: {profileResult.get('error')} - using Apply Token data")
                     if userLoginId:
                         danaUserInfo = {
-                            'phone': userLoginId,
+                            'phone': '',
                             'email': '',
                             'name': '',
-                            'publicUserId': ''
+                            'publicUserId': userLoginId
                         }
             else:
                 exchangeError = f"Token exchange failed: {tokenResult.get('error')}"
