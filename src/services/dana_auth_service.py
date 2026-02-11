@@ -178,111 +178,116 @@ class DanaAuthService:
 
     def _queryUserProfile(self, accessToken):
         """
-        Query User Profile dari DANA menggunakan accessToken (BE-to-BE interaction)
-        Untuk mendapatkan USER_LOGIN_ID dan data lainnya.
-        Ref: https://dashboard.dana.id/api-docs/read/38
+        Query User Profile dari DANA (DANA Widget API)
+        Endpoint: /dana/member/query/queryUserProfile.htm
+        Ref: Official DANA Documentation provided by user
         """
         try:
             baseUrl = Config.DANA_BASE_URL
-            endpoint = "/v1.0/emoney/queryUserProfile"
+            endpoint = "/dana/member/query/queryUserProfile.htm"
             fullUrl = f"{baseUrl}{endpoint}"
 
             jakartaTz = timezone(timedelta(hours=7))
             timestamp = datetime.now(jakartaTz).strftime('%Y-%m-%dT%H:%M:%S+07:00')
-            externalId = f"UQ-{uuid.uuid4().hex[:12].upper()}"
+            reqMsgId = str(uuid.uuid4()).replace('-', '')
 
-            requestBody = {
-                "additionalInfo": {
-                    "accessToken": accessToken
-                }
+            # Request Body sesuai dokumentasi DANA Widget API
+            requestPayload = {
+                "request": {
+                    "head": {
+                        "version": "2.0",
+                        "function": "dana.member.query.queryUserProfile",
+                        "clientId": Config.DANA_CLIENT_ID,
+                        "clientSecret": Config.DANA_CLIENT_SECRET,
+                        "reqTime": timestamp,
+                        "reqMsgId": reqMsgId,
+                        "accessToken": accessToken,
+                        "reserve": "{}"
+                    },
+                    "body": {
+                        "userResources": [
+                            "LOGIN_ID",        # Phone number
+                            "NICKNAME",        # Nickname
+                            "FULLNAME",        # Full name
+                            "EMAIL",           # Email
+                            "AVATAR_URL",      # Azure/Avatar URL
+                            "MASK_DANA_ID",    # Masked ID
+                            "PUBLIC_USER_ID"   # Public ID if available
+                        ]
+                    }
+                },
+                "signature": ""  # Signature generated below
             }
 
-            signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
+            # Generate Signature based on 'request' object (excluding signature field itself)
+            # Note: Implementasi signature DANA mungkin berbeda tergantung agreement.
+            # Default: SHA256withRSA signature string query param or header? 
+            # Dokumentasi sample request ada field "signature" di root JSON.
+            # Kita gunakan method _generateSignature existing tapi disesuaikan jika perlu.
+            # Asumsi: Signature dari stringified 'request' object.
+            
+            signature = self._generateSignature("POST", endpoint, requestPayload['request'], timestamp)
+            if signature:
+                requestPayload['signature'] = signature
 
             headers = {
                 'Content-Type': 'application/json',
-                'Authorization': f"Bearer {accessToken}",
+                # Beaver/X-Signature headers mungkin tidak diperlukan jika signature masuk body?
+                # Tapi kita keep header standard untuk keamanan trace log
                 'X-TIMESTAMP': timestamp,
-                'X-PARTNER-ID': Config.DANA_CLIENT_ID,
-                'X-EXTERNAL-ID': externalId,
-                'X-SIGNATURE': signature
+                'X-CLIENT-KEY': Config.DANA_CLIENT_ID,
             }
 
-            print(f"[AUTH] Query User Profile -> {fullUrl}")
-            print(f"[AUTH] Headers: {json.dumps(headers)}")
+            print(f"[AUTH] Query User Profile (Widget API) -> {fullUrl}")
+            # print(f"[AUTH] Payload: {json.dumps(requestPayload)}") 
 
-            response = requests.post(fullUrl, json=requestBody, headers=headers, timeout=30)
+            response = requests.post(fullUrl, json=requestPayload, headers=headers, timeout=30)
             print(f"[AUTH] User profile response ({response.status_code}): {response.text[:1000]}")
 
             self.logApiCall(endpoint, 'POST', {'token': '***'},
                            response.status_code, response.text[:500])
 
             if response.ok:
-                respData = response.json()
-
-                resultObj = respData.get('result', {})
-                resultCode = resultObj.get('resultCode', '') or respData.get('responseCode', '')
-                resultStatus = resultObj.get('resultStatus', '')
-
-                isSuccess = (
-                    resultStatus == 'S' or
-                    resultCode == 'SUCCESS' or
-                    (resultCode and resultCode.startswith('2')) or
-                    respData.get('userInfo') or
-                    respData.get('userLoginId')
-                )
-
-                # Parse user info dari berbagai format response DANA yang mungkin terjadi
-                # Prioritas: respData.userInfo > respData.additionalInfo > respData root
-                userInfo = respData.get('userInfo') or respData.get('additionalInfo') or respData
+                respJson = response.json()
+                responseBody = respJson.get('response', {})
+                bodyData = responseBody.get('body', {})
+                resultInfo = bodyData.get('resultInfo', {})
                 
-                # Handling nested userInfo string (kadang DANA return JSON string di dalam field)
-                if isinstance(userInfo, str):
-                    try:
-                        userInfo = json.loads(userInfo)
-                    except:
-                        pass
-                
-                if not isinstance(userInfo, dict):
-                    userInfo = {}
+                resultCode = resultInfo.get('resultCode', '')
+                resultStatus = resultInfo.get('resultStatus', '')
 
-                # Extract User Login ID (Phone Number)
-                userLoginId = (
-                    respData.get('userLoginId') or
-                    userInfo.get('userLoginId') or
-                    userInfo.get('loginId') or
-                    userInfo.get('phone') or
-                    userInfo.get('mobile') or
-                    userInfo.get('phoneNumber') or
-                    ''
-                )
-                
-                # Extract Name
-                name = (
-                    userInfo.get('name') or
-                    userInfo.get('nickName') or
-                    userInfo.get('nickname') or
-                    userInfo.get('fullName') or
-                    userInfo.get('userName') or
-                    ''
-                )
-                
-                # Extract Email
-                email = userInfo.get('email', '')
+                isSuccess = (resultStatus == 'S' or resultCode == 'SUCCESS')
 
-                # Extract Public User ID
-                publicUserId = userInfo.get('publicUserId', '')
+                if not isSuccess:
+                    return {'success': False, 'error': f"{resultCode}: {resultInfo.get('resultMsg')}"}
 
-                print(f"[AUTH] Parsed Profile: ID={userLoginId}, Name={name}, Email={email}")
+                # Parse userResourceInfos
+                userResources = bodyData.get('userResourceInfos', [])
+                parsedData = {}
+                
+                for item in userResources:
+                    rType = item.get('resourceType')
+                    rValue = item.get('value')
+                    parsedData[rType] = rValue
+
+                # Map to internal format
+                userLoginId = parsedData.get('LOGIN_ID', '')
+                name = parsedData.get('NICKNAME') or parsedData.get('FULLNAME') or ''
+                email = parsedData.get('EMAIL', '')
+                # Kadang Avatar URL ada di AVATAR_URL
+                avatar = parsedData.get('AVATAR_URL', '')
+
+                print(f"[AUTH] Parsed Widget Profile: ID={userLoginId}, Name={name}, Email={email}")
 
                 return {
-                    'success': isSuccess or bool(userLoginId),
+                    'success': True,
                     'userLoginId': userLoginId,
-                    'phone': userLoginId,  # userLoginId biasanya nomor HP
+                    'phone': userLoginId,
                     'email': email,
                     'name': name,
-                    'publicUserId': publicUserId,
-                    'raw': respData
+                    'publicUserId': parsedData.get('PUBLIC_USER_ID', ''),
+                    'avatar': avatar,
+                    'raw': respJson
                 }
             else:
                 return {'success': False, 'error': f"HTTP {response.status_code}"}
