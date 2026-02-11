@@ -200,7 +200,7 @@ class DanaPaymentService:
                 "urlParams": [
                     {
                         "url": f"{Config.API_BASE_URL}/api/v1/dana/finish-payment",
-                        "type": "PAY_RETURN",
+                        "type": "NOTIFICATION",
                         "isDeeplink": "N"
                     }
                 ],
@@ -211,7 +211,7 @@ class DanaPaymentService:
                         "orderTitle": f"Donasi dari {orderData.get('nama_lengkap', 'Hamba Allah')}"[:64]
                     },
                     "envInfo": {
-                        "sourcePlatform": "MINI_PROGRAM",
+                        "sourcePlatform": "IPG",
                         "terminalType": "APP",
                         "orderTerminalType": "APP"
                     }
