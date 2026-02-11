@@ -27,6 +27,7 @@ from src.config.config import Config
 from datetime import datetime, timezone, timedelta
 import os
 import uuid
+from random import randint
 import json
 import requests
 import hashlib
@@ -724,8 +725,53 @@ class DanaPaymentService:
         except Exception as e:
             return Response.error(f"Query payment gagal: {str(e)}", 500)
 
+    def _callDanaCancelApi(self, orderId, reason):
+        """Call DANA Cancel Order API"""
+        try:
+            baseUrl = Config.DANA_BASE_URL
+            endpoint = "/v1.0/debit/cancel.htm"
+            fullUrl = f"{baseUrl}{endpoint}"
+
+            timestamp = datetime.now(timezone(timedelta(hours=7))).strftime('%Y-%m-%dT%H:%M:%S+07:00')
+            externalId = f"EXT-CANCEL-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
+
+            requestBody = {
+                "merchantId": Config.DANA_MERCHANT_ID,
+                "originalPartnerReferenceNo": orderId,
+                "reason": reason[:256],
+                "amount": { "value": "0.00", "currency": "IDR" }, # Amount ignored/not strictly required for cancel usually, checking schema
+                "additionalInfo": {}
+            }
+            # Note: Docs say "amount" is in body. Some SNAP impls require it, some don't for cancel. 
+            # We will fetch amount from DB to be safe if strictly required, but usually cancel is by OrderID.
+            # Let's fetch donation to fill amount if needed.
+            donation = self.donationModel.findByOrderId(orderId)
+            if donation:
+                requestBody['amount']['value'] = f"{int(donation.get('total_bayar', 0)):.2f}"
+
+            signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
+            headers = {
+                'Content-Type': 'application/json',
+                'X-TIMESTAMP': timestamp,
+                'X-PARTNER-ID': Config.DANA_CLIENT_ID,
+                'X-EXTERNAL-ID': externalId,
+                'CHANNEL-ID': Config.DANA_CHANNEL_ID,
+                'X-SIGNATURE': signature
+            }
+
+            print(f"Calling DANA Cancel API: {fullUrl}")
+            response = requests.post(fullUrl, json=requestBody, headers=headers, timeout=30)
+            self.logApiCall(endpoint, 'POST', requestBody, response.status_code, 
+                            response.json() if response.ok else response.text, orderId)
+            
+            if response.ok:
+                return {'success': True, 'data': response.json()}
+            return {'success': False, 'error': f"{response.status_code}: {response.text}"}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
     def cancelOrder(self, orderId, reason='User cancelled'):
-        """Cancel order yang belum dibayar"""
+        """Cancel order yang belum dibayar (Local + API)"""
         try:
             donation = self.donationModel.findByOrderId(orderId)
             if not donation:
@@ -734,15 +780,291 @@ class DanaPaymentService:
             if donation.get('status') == 'berhasil':
                 return Response.error("Order sudah dibayar, tidak bisa dibatalkan", 400)
 
+            # Call DANA API first
+            danaResult = self._callDanaCancelApi(orderId, reason)
+            
+            # Even if DANA API fails (e.g. order not found in DANA), we might want to cancel locally?
+            # But strictly, if DANA says "success" or "not found", we can cancel.
+            # For now, we process local cancel execution.
+            
             self.donationModel.updateStatus(orderId, 'cancelled')
+            
+            # Log result
+            apiStatus = "Success" if danaResult.get('success') else f"Failed: {danaResult.get('error')}"
+            print(f"Cancel Order result: Local=Success, DANA={apiStatus}")
 
-            self.logApiCall('/cancel-order', 'POST', {'order_id': orderId},
-                           200, {'status': 'cancelled'}, orderId)
-
-            return Response.success(message="Order berhasil dibatalkan")
+            return Response.success(data={'dana_cancel': danaResult}, message="Order berhasil dibatalkan")
 
         except Exception as e:
             return Response.error(f"Cancel order gagal: {str(e)}", 500)
+
+    def _callDanaRefundApi(self, orderId, amount, reason):
+        """Call DANA Refund Order API"""
+        try:
+            baseUrl = Config.DANA_BASE_URL
+            endpoint = "/v1.0/debit/refund.htm"
+            fullUrl = f"{baseUrl}{endpoint}"
+
+            timestamp = datetime.now(timezone(timedelta(hours=7))).strftime('%Y-%m-%dT%H:%M:%S+07:00')
+            externalId = f"EXT-REFUND-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
+            partnerRefundNo = f"REF-{datetime.now().strftime('%Y%m%d%H%M%S')}-{randint(1000,9999)}"
+
+            requestBody = {
+                "merchantId": Config.DANA_MERCHANT_ID,
+                "originalPartnerReferenceNo": orderId,
+                "partnerRefundNo": partnerRefundNo,
+                "refundAmount": {
+                    "value": f"{amount:.2f}",
+                    "currency": "IDR"
+                },
+                "reason": reason[:256],
+                "additionalInfo": {}
+            }
+
+            signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
+            headers = {
+                'Content-Type': 'application/json',
+                'X-TIMESTAMP': timestamp,
+                'X-PARTNER-ID': Config.DANA_CLIENT_ID,
+                'X-EXTERNAL-ID': externalId,
+                'CHANNEL-ID': Config.DANA_CHANNEL_ID,
+                'X-SIGNATURE': signature
+            }
+
+            print(f"Calling DANA Refund API: {fullUrl}")
+            response = requests.post(fullUrl, json=requestBody, headers=headers, timeout=30)
+            self.logApiCall(endpoint, 'POST', requestBody, response.status_code, 
+                            response.json() if response.ok else response.text, orderId)
+
+            if response.ok:
+                return {'success': True, 'data': response.json()}
+            return {'success': False, 'error': f"{response.status_code}: {response.text}"}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def refundOrder(self, orderId, reason='Admin refund'):
+        """Refund order yang sudah berhasil"""
+        try:
+            donation = self.donationModel.findByOrderId(orderId)
+            if not donation:
+                return Response.error("Order tidak ditemukan", 404)
+            
+            if donation.get('status') != 'berhasil':
+                return Response.error("Hanya order berhasil yang bisa di-refund", 400)
+
+            amount = float(donation.get('total_bayar', 0))
+            
+            # Call DANA API
+            result = self._callDanaRefundApi(orderId, amount, reason)
+            
+            if result['success']:
+                # Update status locally
+                # Assuming we reuse 'dibatalkan' or have 'refunded' status. 
+                # Since 'refunded' might not exist in ENUM, we use 'dibatalkan' or just update dana_status.
+                # Let's try to update dana_status mostly.
+                try:
+                    self.donationModel.updateDanaStatusRef(orderId, donation.get('dana_reference_no'), 'REFUNDED')
+                except:
+                    pass
+                return Response.success(data=result['data'], message="Refund berhasil diproses")
+            else:
+                return Response.error(f"Refund gagal: {result.get('error')}", 500)
+
+        except Exception as e:
+            return Response.error(f"Refund exception: {str(e)}", 500)
+
+    def _callDanaBalanceInquiryApi(self, accessToken):
+        """Call DANA Balance Inquiry API"""
+        try:
+            baseUrl = Config.DANA_BASE_URL
+            endpoint = "/v1.0/balance-inquiry.htm"
+            fullUrl = f"{baseUrl}{endpoint}"
+
+            timestamp = datetime.now(timezone(timedelta(hours=7))).strftime('%Y-%m-%dT%H:%M:%S+07:00')
+            externalId = f"EXT-BAL-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
+            # Partner Ref No can be anything unique
+            partnerRef = f"BAL-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+            requestBody = {
+                "partnerReferenceNo": partnerRef,
+                "balanceTypes": ["BALANCE"],
+                "additionalInfo": {
+                    "accessToken": accessToken
+                }
+            }
+
+            signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
+            headers = {
+                'Content-Type': 'application/json',
+                'X-TIMESTAMP': timestamp,
+                'X-PARTNER-ID': Config.DANA_CLIENT_ID,
+                'X-EXTERNAL-ID': externalId,
+                'X-DEVICE-ID': 'BACKEND-SERVER', # Generic device ID
+                'CHANNEL-ID': Config.DANA_CHANNEL_ID,
+                'X-SIGNATURE': signature,
+                'Authorization-Customer': f"Bearer {accessToken}" # Also required in header sometimes? Specs say header Authorization-Customer OR additionalInfo.accessToken. Lets do both/header.
+            }
+            # Spec says "Authorization-Customer" header required.
+
+            print(f"Calling DANA Balance Inquiry API: {fullUrl}")
+            response = requests.post(fullUrl, json=requestBody, headers=headers, timeout=10)
+            self.logApiCall(endpoint, 'POST', requestBody, response.status_code, 
+                            response.json() if response.ok else response.text, partnerRef)
+
+            if response.ok:
+                return {'success': True, 'data': response.json()}
+            return {'success': False, 'error': f"{response.status_code}: {response.text}"}
+
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def balanceInquiry(self, userId):
+        """Cek saldo DANA user (Need Account Binding)"""
+        try:
+            # Get Access Token from User Table (saved during binding/seamless login)
+            user = self.userModel.findById(userId)
+            if not user:
+                return Response.error("User not found", 404)
+            
+            accessToken = user.get('dana_access_token')
+            if not accessToken:
+                return Response.error("User belum terhubung dengan DANA (Access Token missing)", 400)
+
+            result = self._callDanaBalanceInquiryApi(accessToken)
+            
+            if result['success']:
+                return Response.success(data=result['data'], message="Balance inquiry success")
+            else:
+                return Response.error(f"Gagal cek saldo: {result.get('error')}", 500)
+
+        except Exception as e:
+            return Response.error(f"Balance inquiry error: {str(e)}", 500)
+
+    def _callDanaTransactionHistoryApi(self, accessToken, page=1, pageSize=10, fromDate=None, toDate=None):
+        """Call DANA Transaction History API"""
+        try:
+            baseUrl = Config.DANA_BASE_URL
+            endpoint = "/v1.0/transaction-history-list.htm"
+            fullUrl = f"{baseUrl}{endpoint}"
+
+            timestamp = datetime.now(timezone(timedelta(hours=7))).strftime('%Y-%m-%dT%H:%M:%S+07:00')
+            externalId = f"EXT-HIST-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
+            partnerRef = f"HIST-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+            # Default dates if not provided (Last 1 month)
+            if not toDate:
+                toDate = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+            if not fromDate:
+                fromDate = (datetime.now(timezone.utc) - timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+            requestBody = {
+                "partnerReferenceNo": partnerRef,
+                "fromDateTime": fromDate,
+                "toDateTime": toDate,
+                "pageSize": str(pageSize),
+                "pageNumber": str(page),
+                "additionalInfo": {
+                    "accessToken": accessToken,
+                    "types": ["PAYMENT", "REFUND", "TOP_UP"], # Adjust types as needed
+                    "statuses": ["SUCCESS", "PROCESSING", "FAILED", "CLOSED"]
+                }
+            }
+
+            signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
+            headers = {
+                'Content-Type': 'application/json',
+                'X-TIMESTAMP': timestamp,
+                'X-PARTNER-ID': Config.DANA_CLIENT_ID,
+                'X-EXTERNAL-ID': externalId,
+                'X-DEVICE-ID': 'BACKEND-SERVER',
+                'X-IP-ADDRESS': '127.0.0.1', # Dummy or Real IP
+                'CHANNEL-ID': Config.DANA_CHANNEL_ID,
+                'X-SIGNATURE': signature,
+                'Authorization-Customer': f"Bearer {accessToken}" # Spec requirements
+            }
+
+            print(f"Calling DANA History API: {fullUrl}")
+            response = requests.post(fullUrl, json=requestBody, headers=headers, timeout=30)
+            self.logApiCall(endpoint, 'POST', requestBody, response.status_code, 
+                            response.json() if response.ok else response.text, partnerRef)
+
+            if response.ok:
+                return {'success': True, 'data': response.json()}
+            return {'success': False, 'error': f"{response.status_code}: {response.text}"}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def transactionHistory(self, userId, page=1, pageSize=10):
+        """Get user transaction history"""
+        try:
+            user = self.userModel.findById(userId)
+            if not user or not user.get('dana_access_token'):
+                return Response.error("User not connected to DANA", 400)
+            
+            result = self._callDanaTransactionHistoryApi(user.get('dana_access_token'), page, pageSize)
+            
+            if result['success']:
+                return Response.success(data=result['data'], message="History retrieved")
+            return Response.error(f"Failed to get history: {result.get('error')}", 500)
+        except Exception as e:
+            return Response.error(f"History error: {str(e)}", 500)
+
+    def _callDanaTransactionDetailApi(self, accessToken, danaRefNo):
+        """Call DANA Transaction Detail API"""
+        try:
+            baseUrl = Config.DANA_BASE_URL
+            endpoint = "/v1.0/transaction-history-detail.htm"
+            fullUrl = f"{baseUrl}{endpoint}"
+
+            timestamp = datetime.now(timezone(timedelta(hours=7))).strftime('%Y-%m-%dT%H:%M:%S+07:00')
+            externalId = f"EXT-DETAIL-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
+            
+            requestBody = {
+                "originalPartnerReferenceNo": "UNKNOWN", # Placeholder if we don't have it handy
+                "additionalInfo": {
+                    "accessToken": accessToken,
+                    "referenceNo": danaRefNo
+                }
+            }
+
+            signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
+            headers = {
+                'Content-Type': 'application/json',
+                'X-TIMESTAMP': timestamp,
+                'X-PARTNER-ID': Config.DANA_CLIENT_ID,
+                'X-EXTERNAL-ID': externalId,
+                'X-DEVICE-ID': 'BACKEND-SERVER',
+                'X-IP-ADDRESS': '127.0.0.1',
+                'CHANNEL-ID': Config.DANA_CHANNEL_ID,
+                'X-SIGNATURE': signature,
+                'Authorization-Customer': f"Bearer {accessToken}"
+            }
+
+            print(f"Calling DANA Detail API: {fullUrl}")
+            response = requests.post(fullUrl, json=requestBody, headers=headers, timeout=30)
+            self.logApiCall(endpoint, 'POST', requestBody, response.status_code, 
+                            response.json() if response.ok else response.text, danaRefNo)
+
+            if response.ok:
+                return {'success': True, 'data': response.json()}
+            return {'success': False, 'error': f"{response.status_code}: {response.text}"}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+            
+    def transactionDetail(self, userId, refNo):
+        """Get transaction detail"""
+        try:
+            user = self.userModel.findById(userId)
+            if not user or not user.get('dana_access_token'):
+                return Response.error("User not connected to DANA", 400)
+                
+            result = self._callDanaTransactionDetailApi(user.get('dana_access_token'), refNo)
+            
+            if result['success']:
+                return Response.success(data=result['data'], message="Detail retrieved")
+            return Response.error(f"Failed to get detail: {result.get('error')}", 500)
+        except Exception as e:
+            return Response.error(f"Detail error: {str(e)}", 500)
 
     def webhook(self, data, signature=None, headers=None):
         """

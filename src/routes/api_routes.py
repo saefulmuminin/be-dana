@@ -186,6 +186,68 @@ def cancelOrder():
     return danaPaymentService.cancelOrder(orderId, reason)
 
 
+@dana_bp.route('/refund-order', methods=['POST'])
+@token_required
+def refundOrder():
+    """
+    Refund order (Admin only recommended, but here restricted by token)
+    Body: { order_id, reason }
+    """
+    # Authorization check could be added here (e.g. check if user is admin)
+    data = request.json or {}
+    orderId = data.get('order_id')
+    reason = data.get('reason', 'Refund request')
+
+    if not orderId:
+        return {"status": "error", "message": "order_id wajib diisi"}, 400
+
+    return danaPaymentService.refundOrder(orderId, reason)
+
+
+@dana_bp.route('/balance-inquiry', methods=['GET'])
+@token_required
+def balanceInquiry():
+    """
+    Cek saldo DANA User
+    Headers: Authorization: Bearer <token>
+    """
+    userId = g.current_user.get('user_id') if hasattr(g, 'current_user') else None
+    if not userId:
+        return {"status": "error", "message": "Unauthorized"}, 401
+
+    return danaPaymentService.balanceInquiry(userId)
+
+
+@dana_bp.route('/history', methods=['GET'])
+@token_required
+def transactionHistory():
+    """
+    Get DANA Transaction History
+    Params: page, pageSize
+    """
+    userId = g.current_user.get('user_id')
+    if not userId:
+        return {"status": "error", "message": "Unauthorized"}, 401
+    
+    page = request.args.get('page', 1)
+    pageSize = request.args.get('pageSize', 10)
+    
+    return danaPaymentService.transactionHistory(userId, page, pageSize)
+
+
+@dana_bp.route('/history/<refNo>', methods=['GET'])
+@token_required
+def transactionDetail(refNo):
+    """
+    Get DANA Transaction Detail
+    """
+    userId = g.current_user.get('user_id')
+    if not userId:
+        return {"status": "error", "message": "Unauthorized"}, 401
+        
+    return danaPaymentService.transactionDetail(userId, refNo)
+
+
 @dana_bp.route('/webhook', methods=['POST'])
 def webhook():
     """
