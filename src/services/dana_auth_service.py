@@ -107,7 +107,7 @@ class DanaAuthService:
                 keyBody = privateKey.strip()
                 lines = [keyBody[i:i+64] for i in range(0, len(keyBody), 64)]
                 formattedKey = '\n'.join(lines)
-                privateKey = f"-----BEGIN RSA PRIVATE KEY-----\n{formattedKey}\n-----END RSA PRIVATE KEY-----"
+                privateKey = f"-----BEGIN PRIVATE KEY-----\n{formattedKey}\n-----END PRIVATE KEY-----"
 
              pkey = RSA.importKey(privateKey)
              signer = PKCS1_v1_5.new(pkey)
@@ -288,12 +288,9 @@ class DanaAuthService:
             }
 
             # Generate Signature based on 'request' object (excluding signature field itself)
-            # Experiment v1.5: Mimic Postman's JSON.stringify(jsonBody.request) 
-            # which produces Minified JSON (no spaces).
-            # AND use Custom RSA Signer (SHA256withRSA) on that string.
+            # Experiment v1.6: Ensure the payload on the wire matches the signed string EXACTLY.
+            # Convert to Minified JSON for signing.
             
-            # 1. Minify JSON string of the 'request' block
-            # separators=(',', ':') ensures no whitespace (minified)
             requestBodyStr = json.dumps(requestPayload['request'], separators=(',', ':'))
             print(f"[DEBUG] StringToSign (QueryProfile): {requestBodyStr}")
 
@@ -312,9 +309,13 @@ class DanaAuthService:
             }
 
             print(f"[AUTH] Query User Profile (Widget API) -> {fullUrl}")
-            # print(f"[AUTH] Payload: {json.dumps(requestPayload)}") 
+            
+            # Serialize the FINAL payload to minified string as well
+            finalPayloadStr = json.dumps(requestPayload, separators=(',', ':'))
+            # print(f"[AUTH] Payload: {finalPayloadStr}") 
 
-            response = requests.post(fullUrl, json=requestPayload, headers=headers, timeout=30)
+            # Use data=finalPayloadStr to prevent requests from adding spaces
+            response = requests.post(fullUrl, data=finalPayloadStr, headers=headers, timeout=30)
             print(f"[AUTH] User profile response ({response.status_code}): {response.text[:1000]}")
 
             self.logApiCall(endpoint, 'POST', {'token': '***'},
@@ -412,7 +413,7 @@ class DanaAuthService:
             frontendUserInfo = data.get('user_info') or {}
 
             print(f"[AUTH] === Seamless Login (MINI_DANA) ===")
-            print(f"[AUTH] SERVICE VERSION: v1.5-balance-and-stringify")
+            print(f"[AUTH] SERVICE VERSION: v1.7-pkcs8-key")
             print(f"[AUTH] externalId: {externalId}")
             print(f"[AUTH] hasAuthCode: {bool(authCode)}")
 
