@@ -209,9 +209,10 @@ class DanaAuthService:
             }
 
             print(f"[AUTH] Query User Profile -> {fullUrl}")
+            print(f"[AUTH] Headers: {json.dumps(headers)}")
 
             response = requests.post(fullUrl, json=requestBody, headers=headers, timeout=30)
-            print(f"[AUTH] User profile response: {response.status_code} -> {response.text[:300]}")
+            print(f"[AUTH] User profile response ({response.status_code}): {response.text[:1000]}")
 
             self.logApiCall(endpoint, 'POST', {'token': '***'},
                            response.status_code, response.text[:500])
@@ -226,30 +227,61 @@ class DanaAuthService:
                 isSuccess = (
                     resultStatus == 'S' or
                     resultCode == 'SUCCESS' or
-                    (resultCode and resultCode.startswith('2'))
+                    (resultCode and resultCode.startswith('2')) or
+                    respData.get('userInfo') or
+                    respData.get('userLoginId')
                 )
 
-                # Parse user info dari berbagai format response DANA
+                # Parse user info dari berbagai format response DANA yang mungkin terjadi
+                # Prioritas: respData.userInfo > respData.additionalInfo > respData root
                 userInfo = respData.get('userInfo') or respData.get('additionalInfo') or respData
+                
+                # Handling nested userInfo string (kadang DANA return JSON string di dalam field)
+                if isinstance(userInfo, str):
+                    try:
+                        userInfo = json.loads(userInfo)
+                    except:
+                        pass
+                
+                if not isinstance(userInfo, dict):
+                    userInfo = {}
+
+                # Extract User Login ID (Phone Number)
                 userLoginId = (
                     respData.get('userLoginId') or
                     userInfo.get('userLoginId') or
                     userInfo.get('loginId') or
                     userInfo.get('phone') or
-                    userInfo.get('mobile', '')
+                    userInfo.get('mobile') or
+                    userInfo.get('phoneNumber') or
+                    ''
                 )
+                
+                # Extract Name
+                name = (
+                    userInfo.get('name') or
+                    userInfo.get('nickName') or
+                    userInfo.get('nickname') or
+                    userInfo.get('fullName') or
+                    userInfo.get('userName') or
+                    ''
+                )
+                
+                # Extract Email
+                email = userInfo.get('email', '')
+
+                # Extract Public User ID
+                publicUserId = userInfo.get('publicUserId', '')
+
+                print(f"[AUTH] Parsed Profile: ID={userLoginId}, Name={name}, Email={email}")
 
                 return {
                     'success': isSuccess or bool(userLoginId),
                     'userLoginId': userLoginId,
                     'phone': userLoginId,  # userLoginId biasanya nomor HP
-                    'email': userInfo.get('email', ''),
-                    'name': (
-                        userInfo.get('name') or
-                        userInfo.get('nickName') or
-                        userInfo.get('fullName', '')
-                    ),
-                    'publicUserId': userInfo.get('publicUserId', ''),
+                    'email': email,
+                    'name': name,
+                    'publicUserId': publicUserId,
                     'raw': respData
                 }
             else:
@@ -257,6 +289,8 @@ class DanaAuthService:
 
         except Exception as e:
             print(f"[AUTH] Query user profile failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return {'success': False, 'error': str(e)}
 
     # =========================================================================
