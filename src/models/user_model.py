@@ -7,7 +7,7 @@ class UserModel(BaseModel):
     Model untuk tabel adm_user
     Menyimpan data user termasuk DANA OAuth tokens
     """
-    table_name = "adm_user"
+    table_name = "users"
 
     def create(self, data):
         """
