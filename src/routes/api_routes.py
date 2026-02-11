@@ -226,7 +226,7 @@ def transactionHistory():
     Params: page, pageSize
     """
     userId = g.current_user.get('user_id')
-    if not userId:
+    if userId is None:
         return {"status": "error", "message": "Unauthorized"}, 401
     
     page = request.args.get('page', 1)
@@ -242,7 +242,7 @@ def transactionDetail(refNo):
     Get DANA Transaction Detail
     """
     userId = g.current_user.get('user_id')
-    if not userId:
+    if userId is None:
         return {"status": "error", "message": "Unauthorized"}, 401
         
     return danaPaymentService.transactionDetail(userId, refNo)
