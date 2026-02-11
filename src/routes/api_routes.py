@@ -71,7 +71,21 @@ def refreshToken():
     Body: { token } atau { refresh_token }
     """
     return danaAuthService.refreshToken(request.json or {})
+    return danaAuthService.refreshToken(request.json or {})
 
+
+@auth_bp.route('/dana-unbind', methods=['POST'])
+@token_required
+def unbindDana():
+    """
+    Unbind/Logout DANA Account
+    Headers: Authorization: Bearer <token>
+    """
+    userId = g.current_user.get('user_id') if hasattr(g, 'current_user') else None
+    if not userId:
+        return {"status": "error", "message": "Unauthorized"}, 401
+
+    return danaAuthService.unbindAccount(userId)
 
 @auth_bp.route('/finish-redirect', methods=['POST', 'GET'])
 def finishRedirect():

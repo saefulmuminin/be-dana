@@ -170,3 +170,20 @@ class UserModel(BaseModel):
             return None  # Token expired
 
         return user.get('dana_access_token')
+
+    def clearDanaData(self, userId):
+        """
+        Hapus data binding DANA (Unbind/Logout)
+        """
+        with self.conn.cursor() as cursor:
+            sql = f"""
+                UPDATE {self.table_name}
+                SET dana_access_token = NULL,
+                    dana_refresh_token = NULL,
+                    dana_token_expires_at = NULL,
+                    dana_linked_at = NULL
+                WHERE id = %s
+            """
+            cursor.execute(sql, (userId,))
+            self.conn.commit()
+            return cursor.rowcount > 0

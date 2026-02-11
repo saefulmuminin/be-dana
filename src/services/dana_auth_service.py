@@ -594,6 +594,107 @@ class DanaAuthService:
             traceback.print_exc()
             return Response.error(f"Seamless login gagal: {str(e)}", 500)
 
+            import traceback
+            traceback.print_exc()
+            return Response.error(f"Seamless login gagal: {str(e)}", 500)
+
+    def unbindAccount(self, userId):
+        """
+        Unbind DANA account
+        POST /v1.0/registration-account-unbinding.htm
+        """
+        try:
+            # 1. Get user & access token
+            user = self.userModel.findById(userId)
+            if not user:
+                return Response.error("User not found", 404)
+
+            accessToken = user.get('dana_access_token')
+            if not accessToken:
+                # Token already gone, just ensure DB is clear
+                self.userModel.clearDanaData(userId)
+                return Response.success(message="Account already unbound")
+
+            externalId = user.get('dana_external_id') or user.get('external_id')
+
+            # 2. Prepare Request
+            # Menggunakan Widget Base URL (karena endpoint .htm biasanya legacy/widget style)
+            # Tapi signature menggunakan SNAP style (di-sign body-nya)
+            endpoint = "/v1.0/registration-account-unbinding.htm"
+            fullUrl = f"{Config.DANA_WIDGET_BASE_URL}{endpoint}" 
+            
+            # Timestamp GMT+7
+            jakartaTz = timezone(timedelta(hours=7))
+            timestamp = datetime.now(jakartaTz).strftime('%Y-%m-%dT%H:%M:%S+07:00')
+            
+            # Request Body (Format SNAP API flat JSON)
+            requestBody = {
+                "partnerReferenceNo": f"UNBIND-{externalId}-{int(datetime.now().timestamp())}",
+                "merchantId": Config.DANA_MERCHANT_ID,
+                "subMerchantId": Config.DANA_MERCHANT_ID,
+                "additionalInfo": {
+                    "accessToken": accessToken
+                }
+            }
+            
+            # Signature Generation (SHA256withRSA)
+            # Sign minified JSON body
+            bodyStr = json.dumps(requestBody, separators=(',', ':'))
+            signature = self._generateSignatureCustom(bodyStr) 
+
+            headers = {
+                'Content-Type': 'application/json',
+                'X-TIMESTAMP': timestamp,
+                'X-SIGNATURE': signature,
+                'X-PARTNER-ID': Config.DANA_CLIENT_ID,
+                'X-EXTERNAL-ID': f"EXT-{int(datetime.now().timestamp())}", 
+                'X-IP-ADDRESS': '0.0.0.0', 
+                'X-DEVICE-ID': 'server-backend',
+                'CHANNEL-ID': Config.DANA_CHANNEL_ID,
+                'Authorization-Customer': f"Bearer {accessToken}" 
+            }
+            
+            print(f"[AUTH] Unbinding Account for User {userId}...")
+            print(f"[AUTH] URL: {fullUrl}")
+            
+            # Send Request
+            response = requests.post(fullUrl, data=bodyStr, headers=headers, timeout=30)
+            
+            print(f"[AUTH] Unbind Response: {response.status_code} - {response.text}")
+
+            # 3. Handle Response
+            # Success codes: 2000900 (Success), 4010902 (Invalid Token), 4010904 (Token Not Found)
+            # Ketiga kode ini berarti kita harus clear data di sisi kita.
+            
+            shouldClear = False
+            respJson = {}
+            
+            if response.ok:
+                try:
+                    respJson = response.json()
+                    respCode = respJson.get('responseCode')
+                    if respCode in ['2000900', '4010902', '4010904']:
+                        shouldClear = True
+                    else:
+                        print(f"[AUTH] Unbind failed with code: {respCode}")
+                except:
+                    pass
+            else:
+                # If 401 Unauthorized, maybe token expired -> Auto clear locally?
+                # User ingin Logout, kalau token expired di DANA, ya kita anggap logout sukses saja.
+                if response.status_code == 401:
+                    shouldClear = True
+
+            if shouldClear:
+                self.userModel.clearDanaData(userId)
+                return Response.success(message="Unbind DANA successful")
+            else:
+                return Response.error(f"Unbind failed: {respJson.get('responseMessage', 'Unknown error')}")
+
+        except Exception as e:
+            print(f"[AUTH] Unbind error: {str(e)}")
+            return Response.error(f"Unbind error: {str(e)}", 500)
+
     # =========================================================================
     # Database
     # =========================================================================

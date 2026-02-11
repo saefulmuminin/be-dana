@@ -18,6 +18,7 @@ API Reference:
 """
 
 from src.models.donation_model import DonationModel
+from src.models.user_model import UserModel
 from src.models.master_models import RefPaymentModel, RefCampaignModel
 from src.services.simba_service import SimbaService
 from src.utils.response import Response
@@ -56,6 +57,7 @@ class DanaPaymentService:
 
     def __init__(self):
         self.donationModel = DonationModel()
+        self.userModel = UserModel()
         self.paymentModel = RefPaymentModel()
         self.campaignModel = RefCampaignModel()
         self.simbaService = SimbaService()
@@ -194,9 +196,18 @@ class DanaPaymentService:
                     "value": f"{orderData['total_bayar']:.2f}",
                     "currency": "IDR"
                 },
+                "urlParams": [
+                    {
+                        "url": f"{Config.API_BASE_URL}/api/v1/dana/finish-payment",
+                        "type": "PAY_RETURN",
+                        "isDeeplink": "N"
+                    }
+                ],
                 "additionalInfo": {
                     "mcc": "8398",  # Required - Charitable Organizations MCC code
                     "productCode": "51051000100000000001",
+                    "phoneNumber": orderData.get('payer_phone', ''), # Inject Phone Number
+                    "publicUserId": orderData.get('payer_dana_id', ''), # Inject Public User ID
                     "order": {
                         "orderTitle": f"Donasi dari {orderData.get('nama_lengkap', 'Hamba Allah')}"[:64]  # Max 64 chars
                     },
@@ -343,6 +354,20 @@ class DanaPaymentService:
 
             # Prepare order data
             orderData = self._prepareOrderData(data)
+
+            # Enrich with User Data if logged in
+            createdBy = orderData.get('created_by', '')
+            if createdBy and createdBy.startswith('user_'):
+                try:
+                    userId = createdBy.split('_')[1]
+                    user = self.userModel.findById(userId)
+                    if user:
+                        # Add DANA specific user info
+                        orderData['payer_phone'] = user.get('handphone') or user.get('no_hp')
+                        orderData['payer_dana_id'] = user.get('dana_user_id') or user.get('dana_external_id')
+                        print(f"Enriched order with user data: {userId}, Phone: {orderData.get('payer_phone')}")
+                except Exception as e:
+                    print(f"Failed to fetch user data for order: {e}")
 
             # Try to save to database (with error handling)
             donationId = None
