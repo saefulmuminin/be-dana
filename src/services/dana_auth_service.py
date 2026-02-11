@@ -405,6 +405,7 @@ class DanaAuthService:
             frontendUserInfo = data.get('user_info') or {}
 
             print(f"[AUTH] === Seamless Login (MINI_DANA) ===")
+            print(f"[AUTH] SERVICE VERSION: v1.1-fix-signature-sortkeys")
             print(f"[AUTH] externalId: {externalId}")
             print(f"[AUTH] hasAuthCode: {bool(authCode)}")
 
