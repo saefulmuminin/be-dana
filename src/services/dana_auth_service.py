@@ -284,15 +284,20 @@ class DanaAuthService:
             }
 
             # Generate Signature based on 'request' object (excluding signature field itself)
-            # Experiment: Use the same simple signature as Apply Token (client_id|timestamp)
-            # instead of signing the JSON body.
+            # Experiment v1.3: Minified JSON, NO sort_keys, preserve HEAD -> BODY order
             
-            # 1. Simple String to Sign
-            stringToSign = f"{Config.DANA_CLIENT_ID}|{timestamp}"
-            print(f"[DEBUG] StringToSign (QueryProfile): {stringToSign}")
+            # Reconstruct request strictly ordered for signing if needed (though python dict usually keeps order)
+            orderedRequest = {
+                "head": requestPayload['request']['head'],
+                "body": requestPayload['request']['body']
+            }
+
+            # 1. Minify JSON string (separators, NO sort_keys)
+            requestBodyStr = json.dumps(orderedRequest, separators=(',', ':'))
+            print(f"[DEBUG] StringToSign (QueryProfile): {requestBodyStr}")
 
             # 2. Sign it using the custom signer (which does SHA256withRSA)
-            signature = self._generateSignatureCustom(stringToSign)
+            signature = self._generateSignatureCustom(requestBodyStr)
             
             if signature:
                 requestPayload['signature'] = signature
@@ -406,7 +411,7 @@ class DanaAuthService:
             frontendUserInfo = data.get('user_info') or {}
 
             print(f"[AUTH] === Seamless Login (MINI_DANA) ===")
-            print(f"[AUTH] SERVICE VERSION: v1.2-simple-signature")
+            print(f"[AUTH] SERVICE VERSION: v1.3-ordered-head-body")
             print(f"[AUTH] externalId: {externalId}")
             print(f"[AUTH] hasAuthCode: {bool(authCode)}")
 
