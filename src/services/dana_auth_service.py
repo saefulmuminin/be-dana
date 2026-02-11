@@ -97,9 +97,18 @@ class DanaAuthService:
         Ref: https://dashboard.dana.id/api-docs/read/110
         """
         try:
-            baseUrl = Config.DANA_ANTOM_BASE_URL
-            print(f"[DEBUG] Config.DANA_ANTOM_BASE_URL = {baseUrl}")
-            endpoint = "/v1/authorizations/applyToken"
+            # Revert to DANA Widget/Legacy URL because Client ID is from DANA Dashboard
+            # Antom URL rejected the Client ID.
+            # We suspect previous 404 was due to wrong path on api.sandbox.dana.id
+            
+            baseUrl = Config.DANA_WIDGET_BASE_URL # https://api.sandbox.dana.id
+            print(f"[DEBUG] Using DANA_WIDGET_BASE_URL = {baseUrl}")
+
+            # Correct Endpoint for DANA V2/Widget Binding might be:
+            # /dana/oauth/auth/applyToken.htm (Common for legacy)
+            # OR standard /v1/authorizations/applyToken BUT with correct formatting?
+            # Let's try the path documented for Widget: /dana/oauth/auth/applyToken.htm
+            endpoint = "/dana/oauth/auth/applyToken.htm" 
             fullUrl = f"{baseUrl}{endpoint}"
 
             jakartaTz = timezone(timedelta(hours=7))
@@ -110,20 +119,15 @@ class DanaAuthService:
                 "authCode": authCode,
                 "customerBelongsTo": "DANA"
             }
-
-            # Signature requires the full relative path from domain root
-            # URL: https://open-na-global.alipay.com/ams/sandbox/api/v1/authorizations/applyToken
-            # Path to sign: /ams/sandbox/api/v1/authorizations/applyToken
-            signaturePath = "/ams/sandbox/api" + endpoint
-            signature = self._generateSignature("POST", signaturePath, requestBody, timestamp)
+            
+            # Legacy Signature (No path prefix usually, or different)
+            # Let's try standard signature first
+            signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
             if not signature:
                 return {'success': False, 'error': 'Signature generation failed'}
 
             headers = {
                 'Content-Type': 'application/json',
-                'Client-Id': Config.DANA_CLIENT_ID,
-                'Request-Time': timestamp,
-                'Signature': f"algorithm=RSA256, keyVersion=1, signature={signature}",
                 'X-TIMESTAMP': timestamp,
                 'X-CLIENT-KEY': Config.DANA_CLIENT_ID,
                 'X-SIGNATURE': signature
