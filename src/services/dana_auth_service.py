@@ -717,8 +717,12 @@ class DanaAuthService:
                     user = self.userModel.findByDanaExternalId(externalId)
                     if user:
                         print(f"[AUTH] Found by external_id: {user.get('id')}")
-                except:
-                    pass
+                except Exception as e:
+                    print(f"[AUTH] DB Error (findByDanaExternalId): {str(e)}")
+                    try:
+                        self.db.getConnection().rollback()
+                    except:
+                        pass
 
             if not user and email:
                 user = self.userModel.findByEmail(email)
