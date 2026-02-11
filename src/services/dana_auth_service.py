@@ -284,13 +284,14 @@ class DanaAuthService:
             }
 
             # Generate Signature based on 'request' object (excluding signature field itself)
-            # Note: Implementasi signature DANA mungkin berbeda tergantung agreement.
-            # Default: SHA256withRSA signature string query param or header? 
-            # Dokumentasi sample request ada field "signature" di root JSON.
-            # Kita gunakan method _generateSignature existing tapi disesuaikan jika perlu.
-            # Asumsi: Signature dari stringified 'request' object.
+            # Legacy Widget API Signature: SHA256withRSA(Private_Key, minified_json_string_of_request_object)
             
-            signature = self._generateSignature("POST", endpoint, requestPayload['request'], timestamp)
+            # 1. Minify JSON string of the 'request' block
+            requestBodyStr = json.dumps(requestPayload['request'], separators=(',', ':'))
+            
+            # 2. Sign it using the custom signer (which does SHA256withRSA)
+            signature = self._generateSignatureCustom(requestBodyStr)
+            
             if signature:
                 requestPayload['signature'] = signature
 
