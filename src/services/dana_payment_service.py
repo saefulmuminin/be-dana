@@ -204,12 +204,10 @@ class DanaPaymentService:
                     }
                 ],
                 "additionalInfo": {
-                    "mcc": "8398",  # Required - Charitable Organizations MCC code
+                    "mcc": "8398",  # Required
                     "productCode": "51051000100000000001",
-                    "phoneNumber": orderData.get('payer_phone', ''), # Inject Phone Number
-                    "publicUserId": orderData.get('payer_dana_id', ''), # Inject Public User ID
                     "order": {
-                        "orderTitle": f"Donasi dari {orderData.get('nama_lengkap', 'Hamba Allah')}"[:64]  # Max 64 chars
+                        "orderTitle": f"Donasi dari {orderData.get('nama_lengkap', 'Hamba Allah')}"[:64]
                     },
                     "envInfo": {
                         "sourcePlatform": "MINI_PROGRAM",
@@ -218,6 +216,13 @@ class DanaPaymentService:
                     }
                 }
             }
+            
+            # Conditionally add optional fields
+            if orderData.get('payer_phone'):
+                requestBody['additionalInfo']['phoneNumber'] = orderData['payer_phone']
+            
+            if orderData.get('payer_dana_id'):
+                requestBody['additionalInfo']['publicUserId'] = orderData['payer_dana_id']
 
             # Generate signature dengan RSA
             signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
@@ -368,6 +373,19 @@ class DanaPaymentService:
                         print(f"Enriched order with user data: {userId}, Phone: {orderData.get('payer_phone')}")
                 except Exception as e:
                     print(f"Failed to fetch user data for order: {e}")
+
+            # Fallback: Get phone from input data if not found in User DB
+            if not orderData.get('payer_phone') and data.get('phone'):
+                orderData['payer_phone'] = data.get('phone')
+            
+            # Format phone number if exists (remove 62- prefix, ensure 08...)
+            if orderData.get('payer_phone'):
+                phone = str(orderData['payer_phone'])
+                if phone.startswith('62-'):
+                    phone = '0' + phone[3:]
+                elif phone.startswith('62'):
+                    phone = '0' + phone[2:]
+                orderData['payer_phone'] = phone
 
             # Try to save to database (with error handling)
             donationId = None
