@@ -226,6 +226,7 @@ def transactionHistory():
     Params: page, pageSize
     """
     userId = g.current_user.get('user_id')
+    print(f"DEBUG HISTORY: userId={userId} type={type(userId)}")
     if userId is None:
         return {"status": "error", "message": "Unauthorized"}, 401
     
