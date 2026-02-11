@@ -611,12 +611,102 @@ class DanaPaymentService:
             "amount": int(donation.get('total_bayar', 0))
         }, message="Lanjutkan dengan my.tradePay()")
 
+    def _callDanaQueryPaymentApi(self, orderId):
+        """
+        Call DANA Query Payment API (SNAP API)
+        Sesuai dokumentasi: /rest/v1.1/debit/status
+        """
+        try:
+            baseUrl = Config.DANA_BASE_URL
+            endpoint = "/rest/v1.1/debit/status"
+            fullUrl = f"{baseUrl}{endpoint}"
+
+            # Generate request timestamp
+            jakartaTz = timezone(timedelta(hours=7))
+            timestamp = datetime.now(jakartaTz).strftime('%Y-%m-%dT%H:%M:%S+07:00')
+
+            # Generate unique X-EXTERNAL-ID
+            externalId = f"EXT-QUERY-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
+
+            # Request Body
+            requestBody = {
+                "merchantId": Config.DANA_MERCHANT_ID,
+                "originalPartnerReferenceNo": orderId,
+                "serviceCode": "51", # Default to 51 (Direct Debit)
+                "amount": {
+                   "value": "0.00", # Value is ignored for query usually, but required by schema?
+                   "currency": "IDR"
+                },
+                "additionalInfo": {}
+            }
+
+            # Generate signature
+            signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
+            if not signature:
+                return {'success': False, 'error': 'Failed to generate signature'}
+
+            headers = {
+                'Content-Type': 'application/json',
+                'X-TIMESTAMP': timestamp,
+                'X-PARTNER-ID': Config.DANA_CLIENT_ID,
+                'X-EXTERNAL-ID': externalId,
+                'CHANNEL-ID': Config.DANA_CHANNEL_ID,
+                'X-SIGNATURE': signature
+            }
+
+            print(f"Calling DANA Query API: {fullUrl}")
+            response = requests.post(fullUrl, json=requestBody, headers=headers, timeout=30)
+            
+            print(f"DANA Query response: {response.status_code} {response.text}")
+
+            self.logApiCall(endpoint, 'POST', requestBody, response.status_code, 
+                            response.json() if response.ok else response.text, orderId)
+
+            if response.ok:
+                return {'success': True, 'data': response.json()}
+            else:
+                return {'success': False, 'error': f"HTTP {response.status_code}: {response.text}"}
+
+        except Exception as e:
+            print(f"DANA Query API failed: {str(e)}")
+            return {'success': False, 'error': str(e)}
+
     def queryPayment(self, orderId):
-        """Query status pembayaran"""
+        """Query status pembayaran (Local DB + DANA API)"""
         try:
             donation = self.donationModel.findByOrderId(orderId)
             if not donation:
                 return Response.error("Order tidak ditemukan", 404)
+
+            # Jika status masih pending, coba cek ke DANA
+            currentStatus = donation.get('status')
+            if currentStatus == 'pending':
+                print(f"Order {orderId} is pending. Checking with DANA...")
+                danaResult = self._callDanaQueryPaymentApi(orderId)
+                
+                if danaResult['success']:
+                    danaData = danaResult['data']
+                    latestStatus = danaData.get('latestTransactionStatus')
+                    
+                    # Map DANA status to internal status
+                    newStatus = self._mapDanaStatus(latestStatus)
+                    
+                    if newStatus and newStatus != 'pending':
+                        print(f"Updating status from pending to {newStatus}")
+                        # Update DB
+                        try:
+                            danaRef = danaData.get('originalReferenceNo') or danaData.get('referenceNo')
+                            self.donationModel.updateDanaStatusRef(orderId, danaRef, latestStatus) # This updates local status too
+                            
+                            # Refresh donation data
+                            donation = self.donationModel.findByOrderId(orderId)
+                            
+                            # Sync to SIMBA if success
+                            if newStatus == 'berhasil':
+                                self._syncToSimba(donation)
+                                
+                        except Exception as dbErr:
+                            print(f"Failed to update status from query result: {dbErr}")
 
             return Response.success(data={
                 "orderId": orderId,
@@ -627,7 +717,8 @@ class DanaPaymentService:
                 "namaLengkap": donation.get('nama_lengkap'),
                 "campaignId": donation.get('campaign_id'),
                 "createdAt": str(donation.get('created_date')),
-                "paidAt": str(donation.get('paid_date')) if donation.get('paid_date') else None
+                "paidAt": str(donation.get('paid_date')) if donation.get('paid_date') else None,
+                "danaStatus": donation.get('dana_status') # Tambahan info
             }, message="OK")
 
         except Exception as e:
