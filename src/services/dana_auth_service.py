@@ -114,29 +114,63 @@ class DanaAuthService:
             jakartaTz = timezone(timedelta(hours=7))
             timestamp = datetime.now(jakartaTz).strftime('%Y-%m-%dT%H:%M:%S+07:00')
 
-            requestBody = {
-                "grantType": "AUTHORIZATION_CODE",
-                "authCode": authCode,
-                "customerBelongsTo": "DANA"
-            }
+            # DANA Widget API / Legacy Format
+            # Endpoint: /dana/oauth/auth/applyToken.htm
+            # Must use specific envelope structure:
+            # {
+            #   "request": {
+            #     "head": { ... },
+            #     "body": { ... }
+            #   },
+            #   "signature": "..."
+            # }
+
+            reqMsgId = str(uuid.uuid4()).replace('-', '')
             
-            # Legacy Signature (No path prefix usually, or different)
-            # Let's try standard signature first
-            signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
+            # Construct payload in Widget API format
+            requestPayload = {
+                "request": {
+                    "head": {
+                        "version": "2.0",
+                        "function": "dana.oauth.auth.applyToken", # Correct function name for this endpoint
+                        "clientId": Config.DANA_CLIENT_ID,
+                        "clientSecret": Config.DANA_CLIENT_SECRET,
+                        "reqTime": timestamp,
+                        "reqMsgId": reqMsgId,
+                        "reserve": "{}"
+                    },
+                    "body": {
+                        "grantType": "AUTHORIZATION_CODE",
+                        "authCode": authCode
+                    }
+                },
+                "signature": "" # To be filled
+            }
+
+            # Generate Signature on 'request' object
+            # Note: For Widget API, signature usually wraps the 'request' block
+            signature = self._generateSignature("POST", endpoint, requestPayload['request'], timestamp)
             if not signature:
                 return {'success': False, 'error': 'Signature generation failed'}
+            
+            requestPayload['signature'] = signature
 
             headers = {
                 'Content-Type': 'application/json',
                 'X-TIMESTAMP': timestamp,
                 'X-CLIENT-KEY': Config.DANA_CLIENT_ID,
-                'X-SIGNATURE': signature
+                'X-SIGNATURE': signature # Keep header for safety, though payload has it too
             }
 
             print(f"[AUTH] Exchange authCode -> {fullUrl}")
-            print(f"[AUTH] authCode: {authCode[:15]}...")
+            
+            # Log payload structure (masked)
+            debugPayload = requestPayload.copy()
+            if 'request' in debugPayload and 'body' in debugPayload['request']:
+                 debugPayload['request']['body']['authCode'] = authCode[:5] + '***'
+            # print(f"[AUTH] Payload: {json.dumps(debugPayload)}")
 
-            response = requests.post(fullUrl, json=requestBody, headers=headers, timeout=30)
+            response = requests.post(fullUrl, json=requestPayload, headers=headers, timeout=30)
             print(f"[AUTH] DANA token response: {response.status_code} -> {response.text[:300]}")
 
             self.logApiCall(endpoint, 'POST', {'authCode': authCode[:10] + '***'},
@@ -145,42 +179,42 @@ class DanaAuthService:
             if response.ok:
                 respData = response.json()
 
-                # DANA Apply Token response format:
-                # { "result": { "resultCode": "SUCCESS", "resultStatus": "S" },
-                #   "accessToken": "...", "refreshToken": "...",
-                #   "accessTokenExpiryTime": "...", "userLoginId": "..." }
-                # OR legacy format:
-                # { "responseCode": "2007300", "accessToken": "...", ... }
-
-                resultObj = respData.get('result', {})
-                resultCode = resultObj.get('resultCode', '') or respData.get('responseCode', '')
-                resultStatus = resultObj.get('resultStatus', '')
+                # DANA Widget API response format:
+                # { "response": { "head": ..., "body": { "resultInfo": ..., "accessToken": ... } } }
+                
+                responseContainer = respData.get('response', {})
+                respBody = responseContainer.get('body', {})
+                resultInfo = respBody.get('resultInfo', {})
+                resultCode = resultInfo.get('resultCode', '')
+                resultStatus = resultInfo.get('resultStatus', '')
+                resultMsg = resultInfo.get('resultMsg', '')
 
                 isSuccess = (
                     resultStatus == 'S' or
                     resultCode == 'SUCCESS' or
-                    resultCode == '2007300' or
-                    respData.get('accessToken')
+                    resultCode == '2007300' or # Standard DANA success code
+                    respBody.get('accessToken')
                 )
 
                 if isSuccess:
-                    accessToken = respData.get('accessToken')
+                    accessToken = respBody.get('accessToken')
                     print(f"[AUTH] Got accessToken!")
 
-                    # userLoginId bisa langsung ada di response Apply Token
-                    userLoginId = respData.get('userLoginId', '')
+                    # userLoginId might be in the body as well? 
+                    # Usually ApplyToken doesn't return user ID in Widget API, 
+                    # we rely on QueryUserProfile for that.
+                    userLoginId = respBody.get('userLoginId', '')
 
                     return {
                         'success': True,
                         'accessToken': accessToken,
-                        'refreshToken': respData.get('refreshToken'),
-                        'expiresIn': respData.get('expiresIn', 900),
-                        'accessTokenExpiryTime': respData.get('accessTokenExpiryTime'),
+                        'refreshToken': respBody.get('refreshToken'),
+                        'expiresIn': respBody.get('expiresIn', 900),
+                        'accessTokenExpiryTime': respBody.get('accessTokenExpiryTime'),
                         'userLoginId': userLoginId
                     }
                 else:
-                    errMsg = resultObj.get('resultMessage', '') or respData.get('responseMessage', '')
-                    return {'success': False, 'error': f"{resultCode}: {errMsg}"}
+                    return {'success': False, 'error': f"{resultCode}: {resultMsg}"}
             else:
                 return {'success': False, 'error': f"HTTP {response.status_code}"}
 
