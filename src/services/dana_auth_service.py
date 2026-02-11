@@ -121,6 +121,9 @@ class DanaAuthService:
 
             headers = {
                 'Content-Type': 'application/json',
+                'Client-Id': Config.DANA_CLIENT_ID,
+                'Request-Time': timestamp,
+                'Signature': f"algorithm=RSA256, keyVersion=1, signature={signature}",
                 'X-TIMESTAMP': timestamp,
                 'X-CLIENT-KEY': Config.DANA_CLIENT_ID,
                 'X-SIGNATURE': signature
