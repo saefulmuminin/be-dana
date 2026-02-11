@@ -23,9 +23,9 @@ class UserModel(BaseModel):
                 INSERT INTO {self.table_name}
                 (email, password, full_name, tipe, handphone, muzaki_id,
                  dana_access_token, dana_refresh_token, dana_token_expires_at,
-                 dana_external_id, dana_user_id, dana_linked_at, external_id,
+                 dana_external_id, dana_user_id, dana_linked_at, 
                  is_active, created_date)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """
             cursor.execute(sql, (
@@ -41,7 +41,6 @@ class UserModel(BaseModel):
                 data.get('dana_external_id'),
                 data.get('dana_user_id'),
                 data.get('dana_linked_at'),
-                data.get('external_id'),
                 'Y',
                 datetime.now()
             ))
@@ -96,10 +95,10 @@ class UserModel(BaseModel):
 
     def updateExternalId(self, userId, externalId):
         """
-        Update external_id untuk user
+        Update external_id untuk user (Mapped to dana_external_id)
         """
         with self.conn.cursor() as cursor:
-            sql = f"UPDATE {self.table_name} SET external_id = %s, updated_date = %s WHERE id = %s"
+            sql = f"UPDATE {self.table_name} SET dana_external_id = %s, updated_date = %s WHERE id = %s"
             cursor.execute(sql, (externalId, datetime.now(), userId))
             self.conn.commit()
             return cursor.rowcount > 0
