@@ -90,6 +90,35 @@ class DanaAuthService:
             print(f"[AUTH] Signature failed: {str(e)}")
             return None
 
+    def _generateSignatureCustom(self, stringToSign):
+        """Generate RSA signature (PKCS1_v1_5 + SHA256) for custom string"""
+        try:
+             if not CRYPTO_AVAILABLE:
+                return None
+             
+             privateKey = Config.DANA_PRIVATE_KEY
+             if not privateKey:
+                return None
+
+             if '\\n' in privateKey:
+                privateKey = privateKey.replace('\\n', '\n')
+
+             if not privateKey.startswith('-----BEGIN'):
+                keyBody = privateKey.strip()
+                lines = [keyBody[i:i+64] for i in range(0, len(keyBody), 64)]
+                formattedKey = '\n'.join(lines)
+                privateKey = f"-----BEGIN RSA PRIVATE KEY-----\n{formattedKey}\n-----END RSA PRIVATE KEY-----"
+
+             pkey = RSA.importKey(privateKey)
+             signer = PKCS1_v1_5.new(pkey)
+             digest = SHA256.new()
+             digest.update(stringToSign.encode('utf-8'))
+             return base64.b64encode(signer.sign(digest)).decode('utf-8')
+
+        except Exception as e:
+            print(f"[AUTH] Custom Signature failed: {str(e)}")
+            return None
+
     def _exchangeAuthCode(self, authCode):
         """
         Exchange authCode dari my.getAuthCode() -> accessToken via DANA Apply Token API
@@ -108,69 +137,66 @@ class DanaAuthService:
             # /dana/oauth/auth/applyToken.htm (Common for legacy)
             # OR standard /v1/authorizations/applyToken BUT with correct formatting?
             # Let's try the path documented for Widget: /dana/oauth/auth/applyToken.htm
-            endpoint = "/dana/oauth/auth/applyToken.htm" 
+            # DANA Indonesia SNAP API
+            # Endpoint: /v1.0/authorizations/applyToken
+            # Standard JSON format (Not envelope)
+            
+            # DANA SNAP API (B2B2C Binding)
+            # Endpoint: /v1.0/access-token/b2b2c.htm
+            # Ref: User provided documentation
+            
+            endpoint = "/v1.0/access-token/b2b2c.htm"
             fullUrl = f"{baseUrl}{endpoint}"
 
             jakartaTz = timezone(timedelta(hours=7))
             timestamp = datetime.now(jakartaTz).strftime('%Y-%m-%dT%H:%M:%S+07:00')
 
-            # DANA Widget API / Legacy Format
-            # Endpoint: /dana/oauth/auth/applyToken.htm
-            # Must use specific envelope structure:
-            # {
-            #   "request": {
-            #     "head": { ... },
-            #     "body": { ... }
-            #   },
-            #   "signature": "..."
-            # }
+            originalPartnerId = Config.DANA_CLIENT_ID # Client ID / X-PARTNER-ID
 
-            reqMsgId = str(uuid.uuid4()).replace('-', '')
-            
-            # Construct payload in Widget API format
-            requestPayload = {
-                "request": {
-                    "head": {
-                        "version": "2.0",
-                        "function": "dana.oauth.auth.applyToken", # Correct function name for this endpoint
-                        "clientId": Config.DANA_CLIENT_ID,
-                        "clientSecret": Config.DANA_CLIENT_SECRET,
-                        "reqTime": timestamp,
-                        "reqMsgId": reqMsgId,
-                        "reserve": "{}"
-                    },
-                    "body": {
-                        "grantType": "AUTHORIZATION_CODE",
-                        "authCode": authCode
-                    }
-                },
-                "signature": "" # To be filled
+            requestBody = {
+                "grantType": "AUTHORIZATION_CODE",
+                "authCode": authCode,
+                "refreshToken": "",
+                "additionalInfo": {}
             }
-
-            # Generate Signature on 'request' object
-            # Note: For Widget API, signature usually wraps the 'request' block
-            signature = self._generateSignature("POST", endpoint, requestPayload['request'], timestamp)
-            if not signature:
-                return {'success': False, 'error': 'Signature generation failed'}
             
-            requestPayload['signature'] = signature
+            # Signature for SNAP API
+            # StringToSign = client_ID + "|" + X-TIMESTAMP (Based on user doc? Wait, user doc says:)
+            # "X-SIGNATURE: asymmetric signature SHA256withRSA(Private_Key, stringToSign)"
+            # "Where: stringToSign = client_ID + “|” + X-TIMESTAMP"
+            # WAIT! The string to sign is JUST "client_ID|timestamp" ???
+            # Let's check the doc carefully.
+            # "stringToSign = client_ID + “|” + X-TIMESTAMP" -> This looks like a specific format for this API?
+            # BUT standard SNAP usually uses HTTP Method + Endpoint + Body + Timestamp.
+            # Let's check if there's a specific instruction. 
+            # The doc provided says: "Where: stringToSign = client_ID + “|” + X-TIMESTAMP" under the Request Sample.
+            # This is VERY different from standard SNAP. I will try this specific signature first.
+
+            stringToSign = f"{originalPartnerId}|{timestamp}"
+            
+            # However, `_generateSignature` method implements standard SNAP signature (Method:Endpoint:BodyHash:Timestamp).
+            # If I need to sign "client_ID|timestamp", I need to construct it manually or modify/bypass `_generateSignature`.
+            
+            # Let's try to generate signature manually here to be safe
+            signature = self._generateSignatureCustom(stringToSign)
+
+            if not signature:
+                 # Fallback to standard if custom fails (unlikely if logic is right)
+                 return {'success': False, 'error': 'Signature generation failed'}
 
             headers = {
                 'Content-Type': 'application/json',
                 'X-TIMESTAMP': timestamp,
-                'X-CLIENT-KEY': Config.DANA_CLIENT_ID,
-                'X-SIGNATURE': signature # Keep header for safety, though payload has it too
+                'X-CLIENT-KEY': originalPartnerId,
+                'X-PARTNER-ID': originalPartnerId,
+                'X-SIGNATURE': signature
             }
 
             print(f"[AUTH] Exchange authCode -> {fullUrl}")
-            
-            # Log payload structure (masked)
-            debugPayload = requestPayload.copy()
-            if 'request' in debugPayload and 'body' in debugPayload['request']:
-                 debugPayload['request']['body']['authCode'] = authCode[:5] + '***'
-            # print(f"[AUTH] Payload: {json.dumps(debugPayload)}")
+            # print(f"[AUTH] Payload: {json.dumps(requestBody)}")
+            # print(f"[AUTH] StringToSign: {stringToSign}")
 
-            response = requests.post(fullUrl, json=requestPayload, headers=headers, timeout=30)
+            response = requests.post(fullUrl, json=requestBody, headers=headers, timeout=30)
             print(f"[AUTH] DANA token response: {response.status_code} -> {response.text[:300]}")
 
             self.logApiCall(endpoint, 'POST', {'authCode': authCode[:10] + '***'},
@@ -179,42 +205,34 @@ class DanaAuthService:
             if response.ok:
                 respData = response.json()
 
-                # DANA Widget API response format:
-                # { "response": { "head": ..., "body": { "resultInfo": ..., "accessToken": ... } } }
+                # Response Codes:
+                # 2007400: Successful
                 
-                responseContainer = respData.get('response', {})
-                respBody = responseContainer.get('body', {})
-                resultInfo = respBody.get('resultInfo', {})
-                resultCode = resultInfo.get('resultCode', '')
-                resultStatus = resultInfo.get('resultStatus', '')
-                resultMsg = resultInfo.get('resultMsg', '')
+                responseCode = respData.get('responseCode', '')
+                responseMessage = respData.get('responseMessage', '')
 
-                isSuccess = (
-                    resultStatus == 'S' or
-                    resultCode == 'SUCCESS' or
-                    resultCode == '2007300' or # Standard DANA success code
-                    respBody.get('accessToken')
-                )
+                isSuccess = (responseCode == '2007400')
 
                 if isSuccess:
-                    accessToken = respBody.get('accessToken')
+                    accessToken = respData.get('accessToken')
                     print(f"[AUTH] Got accessToken!")
-
-                    # userLoginId might be in the body as well? 
-                    # Usually ApplyToken doesn't return user ID in Widget API, 
-                    # we rely on QueryUserProfile for that.
-                    userLoginId = respBody.get('userLoginId', '')
+                    
+                    # Parse Additional Info for User ID
+                    # "additionalInfo": { "userInfo": { "publicUserId": "..." } }
+                    additionalInfo = respData.get('additionalInfo', {})
+                    userInfoDict = additionalInfo.get('userInfo', {})
+                    publicUserId = userInfoDict.get('publicUserId', '')
 
                     return {
                         'success': True,
                         'accessToken': accessToken,
-                        'refreshToken': respBody.get('refreshToken'),
-                        'expiresIn': respBody.get('expiresIn', 900),
-                        'accessTokenExpiryTime': respBody.get('accessTokenExpiryTime'),
-                        'userLoginId': userLoginId
+                        'refreshToken': respData.get('refreshToken'),
+                        'expiresIn': 0, # usually long lived
+                        'accessTokenExpiryTime': respData.get('accessTokenExpiryTime'),
+                        'userLoginId': publicUserId # Use Public User ID as login ID
                     }
                 else:
-                    return {'success': False, 'error': f"{resultCode}: {resultMsg}"}
+                    return {'success': False, 'error': f"{responseCode}: {responseMessage}"}
             else:
                 return {'success': False, 'error': f"HTTP {response.status_code}"}
 
