@@ -97,7 +97,7 @@ class DanaAuthService:
         Ref: https://dashboard.dana.id/api-docs/read/110
         """
         try:
-            baseUrl = Config.DANA_BASE_URL
+            baseUrl = Config.DANA_ANTOM_BASE_URL
             endpoint = "/v1/authorizations/applyToken"
             fullUrl = f"{baseUrl}{endpoint}"
 
@@ -183,7 +183,7 @@ class DanaAuthService:
         Ref: Official DANA Documentation provided by user
         """
         try:
-            baseUrl = Config.DANA_BASE_URL
+            baseUrl = Config.DANA_WIDGET_BASE_URL
             endpoint = "/dana/member/query/queryUserProfile.htm"
             fullUrl = f"{baseUrl}{endpoint}"
 

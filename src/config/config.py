@@ -47,8 +47,17 @@ class Config:
     DANA_ENV = os.getenv("DANA_ENV", "sandbox")
 
     # DANA Base URL - baca dari environment variable, atau gunakan default berdasarkan DANA_ENV
-    # Sandbox: https://api.sandbox.dana.id (Sesuai dokumentasi terbaru)
-    DANA_BASE_URL = os.getenv("DANA_BASE_URL", "https://api.sandbox.dana.id")
+    
+    # 1. Antom / Global API (untuk Apply Token, Pay, dll)
+    # Sandbox: https://open-na-global.alipay.com/ams/sandbox/api
+    DANA_ANTOM_BASE_URL = os.getenv("DANA_ANTOM_BASE_URL", "https://open-na-global.alipay.com/ams/sandbox/api")
+
+    # 2. DANA Widget/Legacy API (untuk Query User Profile)
+    # Sandbox: https://api.sandbox.dana.id
+    DANA_WIDGET_BASE_URL = os.getenv("DANA_WIDGET_BASE_URL", "https://api.sandbox.dana.id")
+    
+    # Deprecated fallback
+    DANA_BASE_URL = DANA_WIDGET_BASE_URL
 
     # Security Keys (Gunakan path atau string kunci langsung)
     # Private Key Sandbox (Raw String)
