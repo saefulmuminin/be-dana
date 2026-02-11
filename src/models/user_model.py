@@ -24,8 +24,8 @@ class UserModel(BaseModel):
                 (email, password, full_name, tipe, handphone, muzaki_id,
                  dana_access_token, dana_refresh_token, dana_token_expires_at,
                  dana_external_id, dana_user_id, dana_linked_at, 
-                 is_active, created_date)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 active, created_on, ip_address)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """
             cursor.execute(sql, (
@@ -41,8 +41,9 @@ class UserModel(BaseModel):
                 data.get('dana_external_id'),
                 data.get('dana_user_id'),
                 data.get('dana_linked_at'),
-                'Y',
-                datetime.now()
+                1,  # active (1=active)
+                int(time.time()),  # created_on (timestamp)
+                data.get('ip_address', '127.0.0.1')
             ))
             result = cursor.fetchone()
             self.conn.commit()
