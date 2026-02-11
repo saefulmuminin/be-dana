@@ -98,6 +98,7 @@ class DanaAuthService:
         """
         try:
             baseUrl = Config.DANA_ANTOM_BASE_URL
+            print(f"[DEBUG] Config.DANA_ANTOM_BASE_URL = {baseUrl}")
             endpoint = "/v1/authorizations/applyToken"
             fullUrl = f"{baseUrl}{endpoint}"
 
@@ -110,7 +111,11 @@ class DanaAuthService:
                 "customerBelongsTo": "DANA"
             }
 
-            signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
+            # Signature requires the full relative path from domain root
+            # URL: https://open-na-global.alipay.com/ams/sandbox/api/v1/authorizations/applyToken
+            # Path to sign: /ams/sandbox/api/v1/authorizations/applyToken
+            signaturePath = "/ams/sandbox/api" + endpoint
+            signature = self._generateSignature("POST", signaturePath, requestBody, timestamp)
             if not signature:
                 return {'success': False, 'error': 'Signature generation failed'}
 
