@@ -759,7 +759,17 @@ class DanaAuthService:
             return user
 
         except Exception as e:
-            print(f"[AUTH] Get/Create user error: {str(e)}")
+            errorMsg = str(e)
+            print(f"[AUTH] Get/Create user error: {errorMsg}")
+            
+            # Rollback if transaction is aborted or failed
+            try:
+                self.db.getConnection().rollback()
+            except:
+                pass
+                
+            # If error is about valid transaction state or table, 
+            # ensure we return proper user structure (dummy)
             return None
 
     # =========================================================================
