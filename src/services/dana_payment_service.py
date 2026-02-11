@@ -196,6 +196,7 @@ class DanaPaymentService:
                     "value": f"{orderData['total_bayar']:.2f}",
                     "currency": "IDR"
                 },
+                "validUpTo": (datetime.now(timezone(timedelta(hours=7))) + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M:%S+07:00'),
                 "urlParams": [
                     {
                         "url": f"{Config.API_BASE_URL}/api/v1/dana/finish-payment",
