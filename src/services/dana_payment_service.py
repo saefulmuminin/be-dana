@@ -772,8 +772,10 @@ class DanaPaymentService:
             'SUCCESS': 'berhasil',
             'PAID': 'berhasil',
             'COMPLETED': 'berhasil',
+            '00': 'berhasil',  # Finish Notify Success Code
             'FAILED': 'gagal',
             'CANCELLED': 'dibatalkan',
+            '05': 'dibatalkan', # Finish Notify Cancelled Code
             'EXPIRED': 'expired',
             'PENDING': 'pending',
             'INIT': 'pending'
