@@ -284,20 +284,14 @@ class DanaAuthService:
             }
 
             # Generate Signature based on 'request' object (excluding signature field itself)
-            # Experiment v1.3: Minified JSON, NO sort_keys, preserve HEAD -> BODY order
+            # Experiment v1.4: Use standard SNAP Signature (Method:Endpoint:Hash:Timestamp)
+            # Even though it is placed in the body, the generation method might be standard.
             
-            # Reconstruct request strictly ordered for signing if needed (though python dict usually keeps order)
-            orderedRequest = {
-                "head": requestPayload['request']['head'],
-                "body": requestPayload['request']['body']
-            }
-
-            # 1. Minify JSON string (separators, NO sort_keys)
-            requestBodyStr = json.dumps(orderedRequest, separators=(',', ':'))
-            print(f"[DEBUG] StringToSign (QueryProfile): {requestBodyStr}")
-
-            # 2. Sign it using the custom signer (which does SHA256withRSA)
-            signature = self._generateSignatureCustom(requestBodyStr)
+            # Ensure the timestamp matches reqTime!
+            # _generateSignature uses the timestamp argument relative to the stringToSign
+            
+            signature = self._generateSignature("POST", endpoint, requestPayload['request'], timestamp)
+            print(f"[DEBUG] Generated SNAP Signature for QueryProfile")
             
             if signature:
                 requestPayload['signature'] = signature
@@ -411,7 +405,7 @@ class DanaAuthService:
             frontendUserInfo = data.get('user_info') or {}
 
             print(f"[AUTH] === Seamless Login (MINI_DANA) ===")
-            print(f"[AUTH] SERVICE VERSION: v1.3-ordered-head-body")
+            print(f"[AUTH] SERVICE VERSION: v1.4-snap-signature")
             print(f"[AUTH] externalId: {externalId}")
             print(f"[AUTH] hasAuthCode: {bool(authCode)}")
 
