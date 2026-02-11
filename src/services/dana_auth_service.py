@@ -273,14 +273,12 @@ class DanaAuthService:
                     },
                     "body": {
                         "userResources": [
-                            "BALANCE",         # Added by user request
+                            "BALANCE",         # Check balance
                             "LOGIN_ID",        # Phone number
                             "NICKNAME",        # Nickname
                             "FULLNAME",        # Full name
-                            "EMAIL",           # Email
-                            "AVATAR_URL",      # Azure/Avatar URL
+                            "AVATAR_URL",      # Avatar URL
                             "MASK_DANA_ID",    # Masked ID
-                            "PUBLIC_USER_ID"   # Public ID if available
                         ]
                     }
                 },
@@ -413,7 +411,7 @@ class DanaAuthService:
             frontendUserInfo = data.get('user_info') or {}
 
             print(f"[AUTH] === Seamless Login (MINI_DANA) ===")
-            print(f"[AUTH] SERVICE VERSION: v1.7-pkcs8-key")
+            print(f"[AUTH] SERVICE VERSION: v1.8-fix-resources")
             print(f"[AUTH] externalId: {externalId}")
             print(f"[AUTH] hasAuthCode: {bool(authCode)}")
 
