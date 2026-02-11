@@ -997,16 +997,33 @@ class DanaPaymentService:
     def transactionHistory(self, userId, page=1, pageSize=10):
         """Get user transaction history"""
         try:
+            print(f"DEBUG HISTORY: findById({userId})")
             user = self.userModel.findById(userId)
-            if not user or not user.get('dana_access_token'):
+            if not user:
+                print(f"DEBUG HISTORY: User not found for ID {userId}")
+                return Response.error("User not found", 404)
+            
+            accessToken = user.get('dana_access_token')
+            print(f"DEBUG HISTORY: User found. AccessToken={accessToken[:10] if accessToken else 'None'}")
+            
+            if not accessToken:
+                print(f"DEBUG HISTORY: Access Token missing")
                 return Response.error("User not connected to DANA", 400)
             
-            result = self._callDanaTransactionHistoryApi(user.get('dana_access_token'), page, pageSize)
+            print(f"DEBUG HISTORY: Calling DANA History API...")
+            result = self._callDanaTransactionHistoryApi(accessToken, page, pageSize)
             
             if result['success']:
+                print(f"DEBUG HISTORY: SUCCESS")
                 return Response.success(data=result['data'], message="History retrieved")
+            
+            print(f"DEBUG HISTORY: FAILED - {result.get('error')}")
             return Response.error(f"Failed to get history: {result.get('error')}", 500)
+            
         except Exception as e:
+            import traceback
+            errorMsg = traceback.format_exc()
+            print(f"DEBUG HISTORY: EXCEPTION - {errorMsg}")
             return Response.error(f"History error: {str(e)}", 500)
 
     def _callDanaTransactionDetailApi(self, accessToken, danaRefNo):
