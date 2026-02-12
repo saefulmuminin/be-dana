@@ -394,6 +394,10 @@ class DanaPaymentService:
                                     print(f"[PAYMENT] Failed to update user email: {emailErr}")
                             else:
                                 print(f"[PAYMENT] Skip email update. Condition not met.")
+                                # Send existing email to frontend for sync
+                                if userEmail and userEmail != '':
+                                    userEmailUpdated = userEmail
+                                    print(f"[PAYMENT] Sending existing email to frontend: {userEmail}")
     
                             # Add DANA specific user info
                             orderData['payer_phone'] = user.get('handphone') or user.get('no_hp')
