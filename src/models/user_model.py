@@ -99,8 +99,8 @@ class UserModel(BaseModel):
         Update external_id untuk user (Mapped to dana_external_id)
         """
         with self.conn.cursor() as cursor:
-            sql = f"UPDATE {self.table_name} SET dana_external_id = %s, updated_date = %s WHERE id = %s"
-            cursor.execute(sql, (externalId, datetime.now(), userId))
+            sql = f"UPDATE {self.table_name} SET dana_external_id = %s WHERE id = %s"
+            cursor.execute(sql, (externalId, userId))
             self.conn.commit()
             return cursor.rowcount > 0
 

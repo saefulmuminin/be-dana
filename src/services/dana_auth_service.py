@@ -816,7 +816,9 @@ class DanaAuthService:
                     except:
                         pass
 
-            return user
+            # print(f"[DEBUG-LOCAL] user found/created: {user}")
+            
+            return dict(user) if user else None
 
         except Exception as e:
             errorMsg = str(e)
@@ -827,6 +829,7 @@ class DanaAuthService:
         finally:
             # Always close local connection!
             try:
+                # print("[DEBUG-LOCAL] Closing local connection")
                 localUserModel.close()
             except:
                 pass
