@@ -1304,9 +1304,31 @@ class DanaPaymentService:
             else:
                 # Try to find existing muzaki by email or phone
                 email = donation.get('email', '')
-                phone = donation.get('nama_lengkap', '')  # Phone might be in nama_lengkap for seamless login
                 
-                muzaki = muzakiModel.findByEmailOrPhone(email, phone)
+                # Get user data to get real name (not "Hamba Allah")
+                user_name = 'Tidak Diketahui'
+                user_phone = ''
+                
+                # Try to get user by email
+                if email:
+                    try:
+                        user = self.userModel.findByEmail(email)
+                        if user:
+                            user_name = user.get('name') or user.get('username') or 'Tidak Diketahui'
+                            user_phone = user.get('phone', '')
+                            print(f"[SIMBA] Found user by email: {user_name}, Phone: {user_phone}")
+                    except Exception as userErr:
+                        print(f"[SIMBA] Error fetching user: {userErr}")
+                
+                # Fallback to donation data if user not found
+                if user_name == 'Tidak Diketahui':
+                    # Only use nama_lengkap if it's not "Hamba Allah"
+                    nama_donation = donation.get('nama_lengkap', '')
+                    if nama_donation and nama_donation.lower() != 'hamba allah':
+                        user_name = nama_donation
+                    print(f"[SIMBA] Using donation name: {user_name}")
+                
+                muzaki = muzakiModel.findByEmailOrPhone(email, user_phone)
                 
                 if muzaki:
                     print(f"[SIMBA] Found existing muzaki by email/phone: {muzaki.get('id')}")
@@ -1319,9 +1341,9 @@ class DanaPaymentService:
                     try:
                         muzaki_data = {
                             'tipe': donation.get('tipe', 'perorangan'),
-                            'nama': donation.get('nama_lengkap', 'Tidak Diketahui'),
+                            'nama': user_name,  # Use real user name, not "Hamba Allah"
                             'email': email,
-                            'handphone': phone if phone and '@' not in phone else '',
+                            'handphone': user_phone,
                             'npwz': '',
                             'npwz_bg': '',
                             'tgl_daftar': datetime.now().strftime('%Y-%m-%d'),
