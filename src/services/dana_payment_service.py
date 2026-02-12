@@ -1327,6 +1327,7 @@ class DanaPaymentService:
                             'tgl_daftar': datetime.now().strftime('%Y-%m-%d'),
                             'created_by': 'system_webhook'
                         }
+                        print(f"[SIMBA] Muzaki data: {muzaki_data}")
                         muzaki_id = muzakiModel.create(muzaki_data)
                         
                         if muzaki_id:
@@ -1335,10 +1336,12 @@ class DanaPaymentService:
                             self.donationModel.updateMuzakiId(donation['order_id'], muzaki_id)
                             muzaki = muzakiModel.findById(muzaki_id)
                         else:
-                            print(f"[SIMBA] Failed to create muzaki")
+                            print(f"[SIMBA] Failed to create muzaki - create() returned None/False")
                             return
                     except Exception as createErr:
                         print(f"[SIMBA] Error creating muzaki: {createErr}")
+                        import traceback
+                        traceback.print_exc()
                         return
 
             # Step 2: Register muzaki to SIMBA if no NPWZ
@@ -1346,6 +1349,7 @@ class DanaPaymentService:
             
             if not npwz or npwz == '' or npwz == '0':
                 print(f"[SIMBA] Registering muzaki to SIMBA")
+                print(f"[SIMBA] Muzaki info - Nama: {muzaki.get('nama')}, Email: {muzaki.get('email')}, Phone: {muzaki.get('handphone')}")
                 
                 register_result = simba.registerMuzaki(
                     nama=muzaki.get('nama', 'Tidak Diketahui'),
@@ -1353,6 +1357,8 @@ class DanaPaymentService:
                     handphone=muzaki.get('handphone', ''),
                     tipe=muzaki.get('tipe', 'perorangan')
                 )
+                
+                print(f"[SIMBA] Register result: {register_result}")
                 
                 if register_result.get('success'):
                     npwz = register_result.get('npwz', '0')
@@ -1364,7 +1370,11 @@ class DanaPaymentService:
                     self.donationModel.updateNpwz(donation['order_id'], npwz)
                 else:
                     error = register_result.get('error', 'Unknown error')
+                    response = register_result.get('response', {})
                     print(f"[SIMBA] Muzaki registration failed: {error}")
+                    print(f"[SIMBA] Full response: {response}")
+                    # Continue with npwz = '0'
+                    npwz = '0'
                     # Continue with npwz = '0'
                     npwz = '0'
             else:
