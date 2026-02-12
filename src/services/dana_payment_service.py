@@ -1305,8 +1305,8 @@ class DanaPaymentService:
                 # Try to find existing muzaki by email or phone
                 email = donation.get('email', '')
                 
-                # Get user data to get real name (not "Hamba Allah")
-                user_name = 'Tidak Diketahui'
+                # Get user data
+                user_name = None
                 user_phone = ''
                 
                 # Try to get user by email
@@ -1314,19 +1314,21 @@ class DanaPaymentService:
                     try:
                         user = self.userModel.findByEmail(email)
                         if user:
-                            user_name = user.get('name') or user.get('username') or 'Tidak Diketahui'
+                            user_name = user.get('name') or user.get('username')
                             user_phone = user.get('phone', '')
-                            print(f"[SIMBA] Found user by email: {user_name}, Phone: {user_phone}")
+                            print(f"[SIMBA] Found user: name={user_name}, phone={user_phone}")
                     except Exception as userErr:
                         print(f"[SIMBA] Error fetching user: {userErr}")
                 
-                # Fallback to donation data if user not found
-                if user_name == 'Tidak Diketahui':
-                    # Only use nama_lengkap if it's not "Hamba Allah"
-                    nama_donation = donation.get('nama_lengkap', '')
-                    if nama_donation and nama_donation.lower() != 'hamba allah':
-                        user_name = nama_donation
-                    print(f"[SIMBA] Using donation name: {user_name}")
+                # Determine final name - use whatever is available, just skip "Hamba Allah"
+                final_name = user_name
+                
+                # If name is "Hamba Allah", use phone number instead
+                if not final_name or final_name.lower() == 'hamba allah':
+                    final_name = user_phone if user_phone else 'Tidak Diketahui'
+                    print(f"[SIMBA] Name is 'Hamba Allah' or empty, using: {final_name}")
+                else:
+                    print(f"[SIMBA] Using name from user: {final_name}")
                 
                 muzaki = muzakiModel.findByEmailOrPhone(email, user_phone)
                 
@@ -1341,7 +1343,7 @@ class DanaPaymentService:
                     try:
                         muzaki_data = {
                             'tipe': donation.get('tipe', 'perorangan'),
-                            'nama': user_name,  # Use real user name, not "Hamba Allah"
+                            'nama': final_name,  # Use final_name (phone number for DANA seamless login)
                             'email': email,
                             'handphone': user_phone,
                             'npwz': '',
