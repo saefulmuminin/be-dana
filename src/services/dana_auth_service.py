@@ -407,8 +407,15 @@ class DanaAuthService:
         4. Create/find user di database
         5. Return JWT token
         """
+        # Proactive rollback to clear any previous aborted transaction
+        try:
+            self.userModel.conn.rollback()
+        except:
+            pass
+
         try:
             externalId = data.get('external_id') or str(uuid.uuid4())
+
             authCode = data.get('auth_code')
             frontendUserInfo = data.get('user_info') or {}
 
@@ -720,7 +727,7 @@ class DanaAuthService:
                 except Exception as e:
                     print(f"[AUTH] DB Error (findByDanaExternalId): {str(e)}")
                     try:
-                        self.db.getConnection().rollback()
+                        self.userModel.conn.rollback()
                     except:
                         pass
 
@@ -787,7 +794,7 @@ class DanaAuthService:
             
             # Rollback if transaction is aborted or failed
             try:
-                self.db.getConnection().rollback()
+                self.userModel.conn.rollback()
             except:
                 pass
                 
