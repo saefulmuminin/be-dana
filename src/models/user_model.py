@@ -15,8 +15,9 @@ class UserModel(BaseModel):
         Mendukung kolom DANA OAuth yang baru ditambahkan
         """
         email = data.get('email')
-        if not email:
-            raise ValueError("Email is required")
+        # Email is now optional for Seamless Login (will be filled later)
+        # if not email:
+        #     raise ValueError("Email is required")
 
         with self.conn.cursor() as cursor:
             sql = f"""
