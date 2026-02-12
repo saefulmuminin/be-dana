@@ -821,11 +821,13 @@ class DanaAuthService:
             # print(f"[DEBUG-LOCAL] user found/created: {user}")
             
             print(f"[AUTH-DEBUG] Returning user: {dict(user) if user else 'None'}")
-            return dict(user) if user else None
+            final_result = dict(user) if user else None
+            # print(f"[AUTH-DEBUG] final_result TYPE: {type(final_result)}")
+            return final_result
 
-        except Exception as e:
+        except BaseException as e:
             errorMsg = str(e)
-            print(f"[AUTH] Get/Create user FATAL error: {errorMsg}")
+            print(f"[AUTH] Get/Create user FATAL (BaseException): {errorMsg}")
             import traceback
             traceback.print_exc()
             return None
@@ -834,8 +836,8 @@ class DanaAuthService:
             try:
                 # print("[DEBUG-LOCAL] Closing local connection")
                 localUserModel.close()
-            except:
-                pass
+            except BaseException as e:
+                print(f"[AUTH] Failed to close local connection: {str(e)}")
                 
             # If error is about valid transaction state or table, 
             # ensure we return proper user structure (dummy)
