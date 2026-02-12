@@ -86,6 +86,19 @@ class MuzakiModel(BaseModel):
             cursor.execute(sql, (handphone,))
             return cursor.fetchone()
 
+    def findByEmailOrPhone(self, email, phone):
+        """
+        Cari muzaki berdasarkan email atau nomor HP
+        """
+        with self.conn.cursor() as cursor:
+            sql = f"""
+                SELECT * FROM {self.table_name}
+                WHERE (email = %s OR handphone = %s) AND is_delete = 'N'
+                LIMIT 1
+            """
+            cursor.execute(sql, (email, phone))
+            return cursor.fetchone()
+
     def updateProfile(self, id, data):
         """
         Update profil muzaki

@@ -1257,26 +1257,165 @@ class DanaPaymentService:
         return statusMap.get(danaStatus.upper(), 'pending')
 
     def _syncToSimba(self, donation):
-        """Sync transaksi ke SIMBA setelah sukses"""
+        """
+        Sync transaksi ke SIMBA setelah sukses
+        Flow:
+        1. Cek apakah donation punya muzaki_id
+        2. Jika tidak, create muzaki record
+        3. Register muzaki ke SIMBA → dapat NPWZ
+        4. Update NPWZ di database (muzaki & donation)
+        5. Save transaction ke SIMBA
+        """
         try:
+            from src.services.simba_integration import SimbaIntegration
+            from src.models.muzaki_model import MuzakiModel
+
+            print(f"[SIMBA] === Starting SIMBA sync for order {donation.get('order_id')} ===")
+
+            # Initialize SIMBA integration
+            simba = SimbaIntegration()
+            muzakiModel = MuzakiModel()
+
+            # Get fresh donation data
             donation = self.donationModel.findByOrderId(donation['order_id'])
+            if not donation:
+                print(f"[SIMBA] Donation not found")
+                return
 
-            if not donation.get('npwz'):
-                # Note: registerMuzaki arg2 (kantorData) is passed as None for now
-                npwz = self.simbaService.registerMuzaki(donation, {}) 
-                if npwz:
+            # Step 1: Get or create muzaki
+            muzaki_id = donation.get('muzaki_id')
+            muzaki = None
+
+            if muzaki_id:
+                # Muzaki already exists
+                muzaki = muzakiModel.findById(muzaki_id)
+                print(f"[SIMBA] Existing muzaki found: {muzaki_id}")
+            else:
+                # Try to find existing muzaki by email or phone
+                email = donation.get('email', '')
+                phone = donation.get('nama_lengkap', '')  # Phone might be in nama_lengkap for seamless login
+                
+                muzaki = muzakiModel.findByEmailOrPhone(email, phone)
+                
+                if muzaki:
+                    print(f"[SIMBA] Found existing muzaki by email/phone: {muzaki.get('id')}")
+                    # Link donation to muzaki
+                    self.donationModel.updateMuzakiId(donation['order_id'], muzaki['id'])
+                    muzaki_id = muzaki['id']
+                else:
+                    # Create new muzaki
+                    print(f"[SIMBA] Creating new muzaki")
+                    try:
+                        muzaki_data = {
+                            'tipe': donation.get('tipe', 'perorangan'),
+                            'nama': donation.get('nama_lengkap', 'Tidak Diketahui'),
+                            'email': email,
+                            'handphone': phone if phone and '@' not in phone else '',
+                            'npwz': '',
+                            'npwz_bg': '',
+                            'tgl_daftar': datetime.now().strftime('%Y-%m-%d'),
+                            'created_by': 'system_webhook'
+                        }
+                        muzaki_id = muzakiModel.create(muzaki_data)
+                        
+                        if muzaki_id:
+                            print(f"[SIMBA] New muzaki created: {muzaki_id}")
+                            # Link donation to muzaki
+                            self.donationModel.updateMuzakiId(donation['order_id'], muzaki_id)
+                            muzaki = muzakiModel.findById(muzaki_id)
+                        else:
+                            print(f"[SIMBA] Failed to create muzaki")
+                            return
+                    except Exception as createErr:
+                        print(f"[SIMBA] Error creating muzaki: {createErr}")
+                        return
+
+            # Step 2: Register muzaki to SIMBA if no NPWZ
+            npwz = muzaki.get('npwz') if muzaki else None
+            
+            if not npwz or npwz == '' or npwz == '0':
+                print(f"[SIMBA] Registering muzaki to SIMBA")
+                
+                register_result = simba.registerMuzaki(
+                    nama=muzaki.get('nama', 'Tidak Diketahui'),
+                    email=muzaki.get('email', ''),
+                    handphone=muzaki.get('handphone', ''),
+                    tipe=muzaki.get('tipe', 'perorangan')
+                )
+                
+                if register_result.get('success'):
+                    npwz = register_result.get('npwz', '0')
+                    print(f"[SIMBA] Muzaki registered. NPWZ: {npwz}")
+                    
+                    # Update NPWZ in database
+                    if muzaki_id:
+                        muzakiModel.updateNpwz(muzaki_id, npwz, npwz)
                     self.donationModel.updateNpwz(donation['order_id'], npwz)
-                    donation['npwz'] = npwz
+                else:
+                    error = register_result.get('error', 'Unknown error')
+                    print(f"[SIMBA] Muzaki registration failed: {error}")
+                    # Continue with npwz = '0'
+                    npwz = '0'
+            else:
+                print(f"[SIMBA] Using existing NPWZ: {npwz}")
 
-            # Note: saveTransaction requires more args (campaign, etc), passing dummy dicts to avoid crash
-            # TODO: Fetch real campaign/program data
-            try:
-                self.simbaService.saveTransaction(donation, {}, {}, {})
-            except Exception as simbaErr:
-                print(f"Simba save transaction skipped (missing data): {simbaErr}")
+            # Step 3: Save transaction to SIMBA
+            print(f"[SIMBA] Saving transaction to SIMBA")
+            
+            # Format tanggal untuk SIMBA (dd/mm/yyyy)
+            tgl_donasi = donation.get('tgl_donasi')
+            if isinstance(tgl_donasi, str):
+                try:
+                    tgl_donasi = datetime.strptime(tgl_donasi, '%Y-%m-%d')
+                except:
+                    tgl_donasi = datetime.now()
+            elif not tgl_donasi:
+                tgl_donasi = datetime.now()
+            
+            tanggal_simba = tgl_donasi.strftime('%d/%m/%Y')
+            
+            # Get tipe zakat
+            tipe_zakat = donation.get('tipe_zakat', 'infak')
+            
+            # Map tipe_zakat to readable format for SIMBA
+            tipe_zakat_map = {
+                'zakat': 'zakat penghasilan',  # Default zakat
+                'infak': 'infak',
+                'fidyah': 'fidyah'
+            }
+            tipe_zakat_simba = tipe_zakat_map.get(tipe_zakat.lower(), 'infak')
+            
+            save_result = simba.saveTransaction(
+                npwz=npwz,
+                amount=int(donation.get('nominal', 0)),
+                tanggal=tanggal_simba,
+                tipe_zakat=tipe_zakat_simba,
+                order_id=donation.get('order_id', '')
+            )
+            
+            if save_result.get('success'):
+                no_transaksi = save_result.get('no_transaksi', '')
+                print(f"[SIMBA] Transaction saved successfully. No: {no_transaksi}")
+                
+                # Update donation dengan no_transaksi SIMBA
+                try:
+                    conn = self.db.getConnection()
+                    with conn.cursor() as cursor:
+                        sql = "UPDATE adm_campaign_donasi SET no_transaksi = %s WHERE order_id = %s"
+                        cursor.execute(sql, (no_transaksi, donation['order_id']))
+                        conn.commit()
+                except Exception as updateErr:
+                    print(f"[SIMBA] Failed to update no_transaksi: {updateErr}")
+            else:
+                error = save_result.get('error', 'Unknown error')
+                print(f"[SIMBA] Transaction save failed: {error}")
+
+            print(f"[SIMBA] === SIMBA sync completed ===")
 
         except Exception as e:
-            print(f"SIMBA sync failed: {str(e)}")
+            print(f"[SIMBA] SIMBA sync failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
     def finishPayment(self, data):
         """

@@ -84,6 +84,17 @@ class Config:
     # ==========================================================================
     # SIMBA INTEGRATION (BAZNAS)
     # ==========================================================================
-    SIMBA_URL = os.getenv("SIMBA_URL", "https://demo-simba.baznas.or.id/")
-    SIMBA_KEY = os.getenv("SIMBA_KEY", "")
+    SIMBA_BASE_URL = os.getenv("SIMBA_BASE_URL", "https://demo-simba.baznas.or.id")
     SIMBA_ORG = os.getenv("SIMBA_ORG", "")
+    SIMBA_KEY = os.getenv("SIMBA_KEY", "")
+    SIMBA_DIVISI = os.getenv("SIMBA_DIVISI", "22")
+    SIMBA_AMIL_EMAIL = os.getenv("SIMBA_AMIL_EMAIL", "")
+    
+    # SIMBA Account Mappings (akan di-fetch dari API ajax_payment_gateway)
+    # Ini adalah default fallback jika API gagal
+    SIMBA_ACCOUNT_ZAKAT_PENGHASILAN = os.getenv("SIMBA_ACCOUNT_ZAKAT_PENGHASILAN", "")
+    SIMBA_ACCOUNT_ZAKAT_FITRAH = os.getenv("SIMBA_ACCOUNT_ZAKAT_FITRAH", "")
+    SIMBA_ACCOUNT_FIDYAH = os.getenv("SIMBA_ACCOUNT_FIDYAH", "")
+    SIMBA_ACCOUNT_INFAK = os.getenv("SIMBA_ACCOUNT_INFAK", "")
+    SIMBA_PROGRAM = os.getenv("SIMBA_PROGRAM", "")
+    SIMBA_VIA = os.getenv("SIMBA_VIA", "")

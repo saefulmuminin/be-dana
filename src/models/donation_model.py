@@ -211,11 +211,31 @@ class DonationModel(BaseModel):
         """
         Update NPWZ setelah register ke SIMBA
         """
-        with self.conn.cursor() as cursor:
-            sql = f"UPDATE {self.table_name} SET npwz = %s, updated_date = %s WHERE order_id = %s"
-            cursor.execute(sql, (npwz, datetime.now(), orderId))
-            self.conn.commit()
-            return cursor.rowcount > 0
+        try:
+            with self.conn.cursor() as cursor:
+                sql = f"UPDATE {self.table_name} SET npwz = %s, updated_date = %s WHERE order_id = %s"
+                cursor.execute(sql, (npwz, datetime.now(), orderId))
+                self.conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"[DB] Update NPWZ failed: {e}")
+            self.conn.rollback()
+            return False
+
+    def updateMuzakiId(self, orderId, muzakiId):
+        """
+        Update muzaki_id untuk menghubungkan donasi dengan muzaki
+        """
+        try:
+            with self.conn.cursor() as cursor:
+                sql = f"UPDATE {self.table_name} SET muzaki_id = %s, updated_date = %s WHERE order_id = %s"
+                cursor.execute(sql, (muzakiId, datetime.now(), orderId))
+                self.conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"[DB] Update muzaki_id failed: {e}")
+            self.conn.rollback()
+            return False
 
     def getHistoryByEmail(self, email, limit=50, offset=0):
         """
