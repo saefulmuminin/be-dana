@@ -283,20 +283,19 @@ class SimbaIntegration:
         try:
             url = f"{self.base_url}/api/ajax_transaksi_simpan"
 
-            # Get account mapping
-            account_info = self.getAccountMapping(tipe_zakat)
+            # Use fallback account mapping directly (skip payment gateway config)
+            account_info = self._getFallbackAccountMapping(tipe_zakat)
             if not account_info or not account_info.get('akun'):
                 print(f"[SIMBA] No account mapping found for {tipe_zakat}")
                 return {'success': False, 'error': 'No account mapping'}
 
-            # Get config for program and via
-            config = self.getSimbaConfig()
-            if config:
-                program = program or self._cleanProgramString(config.get('kmprogram', ''))
-                via = via or self._cleanAccountString(config.get('via', ''))
-            else:
-                program = program or Config.SIMBA_PROGRAM
-                via = via or Config.SIMBA_VIA
+            # Use fallback values for program and via (skip config fetch)
+            if not program:
+                program = Config.SIMBA_PROGRAM or '113010000'  # Default program
+            if not via:
+                via = Config.SIMBA_VIA or '11010101'  # Default via
+            
+            print(f"[SIMBA] Using account: {account_info['akun']}, program: {program}, via: {via}")
 
             keterangan = f"payment{order_id}"
 
