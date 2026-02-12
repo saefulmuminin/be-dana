@@ -818,6 +818,7 @@ class DanaAuthService:
 
             # print(f"[DEBUG-LOCAL] user found/created: {user}")
             
+            print(f"[AUTH-DEBUG] Returning user: {dict(user) if user else 'None'}")
             return dict(user) if user else None
 
         except Exception as e:
