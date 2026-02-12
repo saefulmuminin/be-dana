@@ -706,7 +706,7 @@ class DanaAuthService:
     # Database
     # =========================================================================
 
-    def _getOrCreateUser(self, userInfo, externalId):
+    def _getOrCreateUser(self, externalId, userInfo):
         """
         Get or create user based on DANA info
         Using local UserModel to ensure clean transaction state
