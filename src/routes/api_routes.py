@@ -247,7 +247,16 @@ def transactionHistory():
         fromDate = f"{year}-{month:02d}-01T00:00:00+07:00"
         
         last_day_val = calendar.monthrange(year, month)[1]
-        toDate = f"{year}-{month:02d}-{last_day_val}T23:59:59+07:00"
+        
+        # Access now with timezone to compare properly
+        jakarta_tz = timezone(timedelta(hours=7))
+        now_wib = datetime.now(jakarta_tz)
+        
+        # If current month, cap toDate to now
+        if year == now_wib.year and month == now_wib.month:
+             toDate = now_wib.strftime('%Y-%m-%dT%H:%M:%S+07:00')
+        else:
+             toDate = f"{year}-{month:02d}-{last_day_val}T23:59:59+07:00"
     except Exception as e:
         print(f"Date parsing error: {e}")
         fromDate = None
