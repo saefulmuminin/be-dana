@@ -362,6 +362,10 @@ class DanaPaymentService:
             # Prepare order data
             orderData = self._prepareOrderData(data)
 
+            # Email update tracking
+            emailUpdated = False
+            userEmailUpdated = None
+
             # Enrich with User Data if logged in
             createdBy = orderData.get('created_by', '')
             if createdBy and createdBy.startswith('user_'):
@@ -376,6 +380,8 @@ class DanaPaymentService:
                             try:
                                 print(f"Updating user {userId} email from empty to {inputEmail}")
                                 self.userModel.updateEmail(userId, inputEmail)
+                                emailUpdated = True
+                                userEmailUpdated = inputEmail
                             except Exception as emailErr:
                                 print(f"Failed to update user email: {emailErr}")
 
@@ -482,6 +488,8 @@ class DanaPaymentService:
                 "status": "pending",
                 "dbSaved": dbSaved,
                 "danaApiCalled": danaApiCalled,
+                "emailUpdated": emailUpdated,
+                "userEmail": userEmailUpdated,
                 "message": "Order berhasil dibuat. Gunakan checkoutUrl untuk my.tradePay({ paymentUrl })"
             }, message="Order berhasil dibuat")
 
