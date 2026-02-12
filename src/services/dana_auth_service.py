@@ -491,9 +491,7 @@ class DanaAuthService:
             dbUser = False
             try:
                 user = self._getOrCreateUser(externalId, userInfo)
-                print(f"[Seamless-DEBUG] User from getOrCreate: {user}")
                 dbUser = user is not None
-                print(f"[Seamless-DEBUG] dbUser after set: {dbUser}")
             except Exception as dbError:
                 print(f"[AUTH] DB error: {str(dbError)}")
                 user = {
@@ -518,10 +516,10 @@ class DanaAuthService:
                 try:
                     self.userModel.updateDanaToken(user['id'], {
                         'dana_access_token': danaAccessToken,
-                        'dana_refresh_token': tokenResult.get('refreshToken'),
+                         'dana_refresh_token': tokenResult.get('refreshToken'),
                         'dana_token_expires_at': tokenResult.get('accessTokenExpiryTime'),
                         'dana_external_id': externalId,
-                        'dana_user_id': userInfo.get('publicUserId') or userInfo.get('phone')
+                        'dana_user_id': userInfo.get('publicUserId') or str(uuid.uuid4())
                     })
                 except:
                     pass
@@ -774,7 +772,7 @@ class DanaAuthService:
                 cleanPhone = phone[:15] if phone else ''
                 
                 # Format email (fallback if empty)
-                cleanEmail = email if email else f'{externalId}@dana.miniapp'
+                cleanEmail = email or None
                 
                 userData = {
                     'nama': userInfo.get('name', f'User_{externalId[:8]}'),
@@ -820,7 +818,7 @@ class DanaAuthService:
 
             # print(f"[DEBUG-LOCAL] user found/created: {user}")
             
-            print(f"[AUTH-DEBUG] Returning user: {dict(user) if user else 'None'}")
+            # print(f"[AUTH-DEBUG] Returning user: {dict(user) if user else 'None'}")
             final_result = dict(user) if user else None
             
             try:
