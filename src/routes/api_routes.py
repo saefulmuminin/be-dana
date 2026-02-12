@@ -133,6 +133,7 @@ def createOrder():
 
     # Tambahkan user info dari JWT jika ada token
     authHeader = request.headers.get('Authorization')
+    print(f"[API] create-order authHeader: {authHeader}")
     if authHeader and authHeader.startswith('Bearer '):
         try:
             import jwt
@@ -140,11 +141,13 @@ def createOrder():
             token = authHeader.split(' ')[1]
             payload = jwt.decode(token, Config.JWT_SECRET, algorithms=['HS256'])
             data['created_by'] = f"user_{payload.get('user_id')}"
+            print(f"[API] Set created_by: {data['created_by']}")
             if not data.get('email'):
                 data['email'] = payload.get('email')
             if not data.get('muzaki_id'):
                 data['muzaki_id'] = payload.get('muzaki_id')
-        except:
+        except Exception as e:
+            print(f"[API] Token decode failed: {str(e)}")
             pass  # Ignore token errors, proceed without user info
 
     return danaPaymentService.createOrder(data)

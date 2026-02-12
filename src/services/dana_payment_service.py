@@ -376,18 +376,24 @@ class DanaPaymentService:
                     localUserModel = UserModel()
                     try:
                         user = localUserModel.findById(userId)
+                        print(f"[PAYMENT] createOrder user found: {user.get('id') if user else 'None'}")
                         if user:
                             # Auto-update user email if empty
                             userEmail = user.get('email')
                             inputEmail = data.get('email')
+                            print(f"[PAYMENT] Email check - User: '{userEmail}', Input: '{inputEmail}'")
+                            
                             if (not userEmail or userEmail == '') and inputEmail:
                                 try:
-                                    print(f"Updating user {userId} email from empty to {inputEmail}")
+                                    print(f"[PAYMENT] Updating user {userId} email from empty to {inputEmail}")
                                     localUserModel.updateEmail(userId, inputEmail)
                                     emailUpdated = True
                                     userEmailUpdated = inputEmail
+                                    print(f"[PAYMENT] Email update success flag set")
                                 except Exception as emailErr:
-                                    print(f"Failed to update user email: {emailErr}")
+                                    print(f"[PAYMENT] Failed to update user email: {emailErr}")
+                            else:
+                                print(f"[PAYMENT] Skip email update. Condition not met.")
     
                             # Add DANA specific user info
                             orderData['payer_phone'] = user.get('handphone') or user.get('no_hp')
