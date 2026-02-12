@@ -1188,14 +1188,18 @@ class DanaPaymentService:
                 except:
                     pass
 
+
             # Cari donation
             donation = None
             if orderId:
                 donation = self.donationModel.findByOrderId(orderId)
+                print(f"[WEBHOOK] Searching donation by orderId: {orderId}, Found: {donation is not None}")
             if not donation and partnerRef:
                 donation = self.donationModel.findByPartnerRefNo(partnerRef)
+                print(f"[WEBHOOK] Searching donation by partnerRef: {partnerRef}, Found: {donation is not None}")
 
             if not donation:
+                print(f"[WEBHOOK] Donation not found! orderId={orderId}, partnerRef={partnerRef}")
                 # Return success anyway to acknowledge webhook
                 # DANA expects 2xx response
                 return {
@@ -1203,11 +1207,14 @@ class DanaPaymentService:
                     "responseMessage": "Successful"
                 }, 200
 
+            print(f"[WEBHOOK] Donation found: {donation.get('order_id')}, Current status: {donation.get('status')}")
+
             # Update database dengan DANA status langsung
             # updateDanaStatusRef akan melakukan mapping sendiri
             try:
                 # Normalize status untuk database function
                 normalizedStatus = status.upper() if status else 'PENDING'
+                print(f"[WEBHOOK] Updating donation status to: {normalizedStatus}")
                 self.donationModel.updateDanaStatusRef(
                     donation['order_id'],
                     danaRef,
@@ -1218,10 +1225,14 @@ class DanaPaymentService:
 
             # Map DANA status ke internal status untuk sync ke SIMBA
             internalStatus = self._mapDanaStatus(status)
+            print(f"[WEBHOOK] DANA status '{status}' mapped to internal status: '{internalStatus}'")
 
             # Sync ke SIMBA jika sukses
             if internalStatus == 'berhasil':
+                print(f"[WEBHOOK] ✅ Triggering SIMBA sync for order: {donation.get('order_id')}")
                 self._syncToSimba(donation)
+            else:
+                print(f"[WEBHOOK] ⏭️ Skipping SIMBA sync - status is not 'berhasil': {internalStatus}")
 
             # Response sesuai format DANA SNAP API
             return {
