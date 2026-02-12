@@ -134,15 +134,20 @@ class DonationModel(BaseModel):
         status: 'pending', 'processing', 'success', 'failed', 'cancelled'
         """
         db_status = self.STATUS_MAP.get(status, status)
-        with self.conn.cursor() as cursor:
-            sql = f"""
-                UPDATE {self.table_name}
-                SET status = %s, updated_date = %s, updated_by = 'system'
-                WHERE order_id = %s
-            """
-            cursor.execute(sql, (db_status, datetime.now(), orderId))
-            self.conn.commit()
-            return cursor.rowcount > 0
+        try:
+            with self.conn.cursor() as cursor:
+                sql = f"""
+                    UPDATE {self.table_name}
+                    SET status = %s, updated_date = %s, updated_by = 'system'
+                    WHERE order_id = %s
+                """
+                cursor.execute(sql, (db_status, datetime.now(), orderId))
+                self.conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"[DB] Update status failed: {e}")
+            self.conn.rollback()
+            return False
 
     def updateDanaRefs(self, orderId, referenceNo, webRedirectUrl):
         """
@@ -172,16 +177,21 @@ class DonationModel(BaseModel):
         db_status = status_map.get(danaStatus, 'menunggu')
         dana_paid_at = datetime.now() if danaStatus == 'SUCCESS' else None
 
-        with self.conn.cursor() as cursor:
-            sql = f"""
-                UPDATE {self.table_name}
-                SET dana_reference_no = %s, dana_status = %s, status = %s,
-                    dana_paid_at = %s, updated_date = %s
-                WHERE order_id = %s
-            """
-            cursor.execute(sql, (referenceNo, danaStatus, db_status, dana_paid_at, datetime.now(), orderId))
-            self.conn.commit()
-            return cursor.rowcount > 0
+        try:
+            with self.conn.cursor() as cursor:
+                sql = f"""
+                    UPDATE {self.table_name}
+                    SET dana_reference_no = %s, dana_status = %s, status = %s,
+                        dana_paid_at = %s, updated_date = %s
+                    WHERE order_id = %s
+                """
+                cursor.execute(sql, (referenceNo, danaStatus, db_status, dana_paid_at, datetime.now(), orderId))
+                self.conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"[DB] Update DANA status failed: {e}")
+            self.conn.rollback()
+            return False
 
     def updateOttToken(self, orderId, ottToken):
         """
