@@ -491,7 +491,9 @@ class DanaAuthService:
             dbUser = False
             try:
                 user = self._getOrCreateUser(externalId, userInfo)
+                print(f"[Seamless-DEBUG] User from getOrCreate: {user}")
                 dbUser = user is not None
+                print(f"[Seamless-DEBUG] dbUser after set: {dbUser}")
             except Exception as dbError:
                 print(f"[AUTH] DB error: {str(dbError)}")
                 user = {
