@@ -772,7 +772,7 @@ class DanaAuthService:
                 cleanPhone = phone[:15] if phone else ''
                 
                 # Format email (fallback if empty)
-                cleanEmail = email or None
+                cleanEmail = email or ''
                 
                 userData = {
                     'nama': userInfo.get('name', f'User_{externalId[:8]}'),

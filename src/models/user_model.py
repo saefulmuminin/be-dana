@@ -158,6 +158,16 @@ class UserModel(BaseModel):
             self.conn.commit()
             return cursor.rowcount > 0
 
+    def updateEmail(self, userId, email):
+        """
+        Update email user
+        """
+        with self.conn.cursor() as cursor:
+            sql = f"UPDATE {self.table_name} SET email = %s WHERE id = %s"
+            cursor.execute(sql, (email, userId))
+            self.conn.commit()
+            return cursor.rowcount > 0
+
     def getDanaAccessToken(self, userId):
         """
         Ambil DANA access token jika masih valid

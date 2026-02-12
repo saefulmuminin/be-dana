@@ -369,6 +369,16 @@ class DanaPaymentService:
                     userId = createdBy.split('_')[1]
                     user = self.userModel.findById(userId)
                     if user:
+                        # Auto-update user email if empty
+                        userEmail = user.get('email')
+                        inputEmail = data.get('email')
+                        if (not userEmail or userEmail == '') and inputEmail:
+                            try:
+                                print(f"Updating user {userId} email from empty to {inputEmail}")
+                                self.userModel.updateEmail(userId, inputEmail)
+                            except Exception as emailErr:
+                                print(f"Failed to update user email: {emailErr}")
+
                         # Add DANA specific user info
                         orderData['payer_phone'] = user.get('handphone') or user.get('no_hp')
                         orderData['payer_dana_id'] = user.get('dana_user_id') or user.get('dana_external_id')
