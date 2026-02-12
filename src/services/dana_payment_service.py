@@ -371,24 +371,35 @@ class DanaPaymentService:
             if createdBy and createdBy.startswith('user_'):
                 try:
                     userId = createdBy.split('_')[1]
-                    user = self.userModel.findById(userId)
-                    if user:
-                        # Auto-update user email if empty
-                        userEmail = user.get('email')
-                        inputEmail = data.get('email')
-                        if (not userEmail or userEmail == '') and inputEmail:
-                            try:
-                                print(f"Updating user {userId} email from empty to {inputEmail}")
-                                self.userModel.updateEmail(userId, inputEmail)
-                                emailUpdated = True
-                                userEmailUpdated = inputEmail
-                            except Exception as emailErr:
-                                print(f"Failed to update user email: {emailErr}")
-
-                        # Add DANA specific user info
-                        orderData['payer_phone'] = user.get('handphone') or user.get('no_hp')
-                        orderData['payer_dana_id'] = user.get('dana_user_id') or user.get('dana_external_id')
-                        print(f"Enriched order with user data: {userId}, Phone: {orderData.get('payer_phone')}")
+                    
+                    # Use fresh UserModel instance to avoid transaction conflicts
+                    localUserModel = UserModel()
+                    try:
+                        user = localUserModel.findById(userId)
+                        if user:
+                            # Auto-update user email if empty
+                            userEmail = user.get('email')
+                            inputEmail = data.get('email')
+                            if (not userEmail or userEmail == '') and inputEmail:
+                                try:
+                                    print(f"Updating user {userId} email from empty to {inputEmail}")
+                                    localUserModel.updateEmail(userId, inputEmail)
+                                    emailUpdated = True
+                                    userEmailUpdated = inputEmail
+                                except Exception as emailErr:
+                                    print(f"Failed to update user email: {emailErr}")
+    
+                            # Add DANA specific user info
+                            orderData['payer_phone'] = user.get('handphone') or user.get('no_hp')
+                            orderData['payer_dana_id'] = user.get('dana_user_id') or user.get('dana_external_id')
+                            print(f"Enriched order with user data: {userId}, Phone: {orderData.get('payer_phone')}")
+                    finally:
+                        # Close local connection to prevent leaks
+                        try:
+                            if hasattr(localUserModel, 'conn') and localUserModel.conn:
+                                localUserModel.conn.close()
+                        except:
+                            pass
                 except Exception as e:
                     print(f"Failed to fetch user data for order: {e}")
 

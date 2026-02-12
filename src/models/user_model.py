@@ -162,11 +162,16 @@ class UserModel(BaseModel):
         """
         Update email user
         """
-        with self.conn.cursor() as cursor:
-            sql = f"UPDATE {self.table_name} SET email = %s WHERE id = %s"
-            cursor.execute(sql, (email, userId))
-            self.conn.commit()
-            return cursor.rowcount > 0
+        try:
+            with self.conn.cursor() as cursor:
+                sql = f"UPDATE {self.table_name} SET email = %s WHERE id = %s"
+                cursor.execute(sql, (email, userId))
+                self.conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"[DB] Update email failed: {e}")
+            self.conn.rollback()
+            return False
 
     def getDanaAccessToken(self, userId):
         """
