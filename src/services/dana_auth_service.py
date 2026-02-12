@@ -736,17 +736,38 @@ class DanaAuthService:
 
             if not user:
                 print(f"[AUTH] Creating new user: email={email}, phone={phone}")
+                
+                # Format phone (max 15 chars)
+                cleanPhone = phone[:15] if phone else ''
+                
+                # Format email (fallback if empty)
+                cleanEmail = email if email else f'{externalId}@dana.miniapp'
+                
                 userData = {
                     'nama': userInfo.get('name', f'User_{externalId[:8]}'),
-                    'email': email or f'{externalId}@dana.miniapp',
-                    'no_hp': phone,
+                    'email': cleanEmail,
+                    'no_hp': cleanPhone,
                     'external_id': externalId,
                     'dana_external_id': externalId,
                     'created_date': datetime.now(),
-                    'is_active': 'Y'
+                    'is_active': 'Y',
+                    'ip_address': userInfo.get('ip_address', '127.0.0.1')
                 }
-                userId = self.userModel.create(userData)
-                user = self.userModel.findById(userId)
+                
+                print(f"[AUTH] Inserting user data: {userData}")
+                
+                try:
+                    userId = self.userModel.create(userData)
+                    if userId:
+                        user = self.userModel.findById(userId)
+                        print(f"[AUTH] Created user ID: {userId}")
+                    else:
+                        print(f"[AUTH] Create returned None ID")
+                except Exception as createErr:
+                    print(f"[AUTH] Create failed: {str(createErr)}")
+                    import traceback
+                    traceback.print_exc()
+                    raise createErr
             else:
                 if not user.get('external_id'):
                     self.userModel.updateExternalId(user['id'], externalId)
@@ -760,7 +781,9 @@ class DanaAuthService:
 
         except Exception as e:
             errorMsg = str(e)
-            print(f"[AUTH] Get/Create user error: {errorMsg}")
+            print(f"[AUTH] Get/Create user FATAL error: {errorMsg}")
+            import traceback
+            traceback.print_exc()
             
             # Rollback if transaction is aborted or failed
             try:
