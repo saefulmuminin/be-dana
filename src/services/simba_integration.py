@@ -24,6 +24,38 @@ class SimbaIntegration:
         # Cache untuk config SIMBA
         self._simba_config_cache = None
 
+        # Database connection untuk logging
+        from src.utils.database import Database
+        self.db = Database()
+
+    def _logApiCall(self, endpoint, method, request_data, response_status, response_body, error=None):
+        """Log SIMBA API call ke database"""
+        try:
+            conn = self.db.getConnection()
+            with conn.cursor() as cursor:
+                # Mask sensitive data
+                safe_request = request_data.copy() if request_data else {}
+                if 'key' in safe_request:
+                    safe_request['key'] = '***MASKED***'
+                
+                sql = """
+                    INSERT INTO log_api
+                    (name, aplikasi, url_api, parameter, response, created_date, created_by, is_active, is_delete)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'Y', 'N')
+                """
+                cursor.execute(sql, (
+                    f"SIMBA_{method}",
+                    'SIMBA_BAZNAS',
+                    endpoint,
+                    json.dumps(safe_request) if safe_request else None,
+                    json.dumps(response_body) if response_body else str(error),
+                    datetime.now(),
+                    'system'
+                ))
+                conn.commit()
+        except Exception as e:
+            print(f"[SIMBA] Failed to log API call: {str(e)}")
+
     def getSimbaConfig(self):
         """
         Fetch SIMBA payment gateway configuration
@@ -176,10 +208,12 @@ class SimbaIntegration:
             )
 
             response_text = response.text
+            response_status = response.status_code
 
             # Check for Cloudflare protection
             if 'Just a moment' in response_text or 'cf-chl-bypass' in response_text:
                 print(f"[SIMBA] Cloudflare protection detected")
+                self._logApiCall(url, 'REGISTER_MUZAKI', payload, response_status, {'error': 'Cloudflare Protection'})
                 return {'success': False, 'error': 'Cloudflare Protection'}
 
             # Parse JSON response
@@ -187,7 +221,11 @@ class SimbaIntegration:
                 result = json.loads(response_text)
             except:
                 print(f"[SIMBA] Invalid JSON response: {response_text[:200]}")
+                self._logApiCall(url, 'REGISTER_MUZAKI', payload, response_status, {'error': 'Invalid JSON', 'raw': response_text[:200]})
                 return {'success': False, 'error': 'Invalid JSON response'}
+
+            # Log API call
+            self._logApiCall(url, 'REGISTER_MUZAKI', payload, response_status, result)
 
             # Check status
             if result.get('status_code') in ['00', '000'] or result.get('status') == 'success':
@@ -201,9 +239,11 @@ class SimbaIntegration:
 
         except requests.Timeout:
             print(f"[SIMBA] Registration timeout")
+            self._logApiCall(url, 'REGISTER_MUZAKI', payload, 0, None, error='Request timeout')
             return {'success': False, 'error': 'Request timeout'}
         except Exception as e:
             print(f"[SIMBA] Registration error: {str(e)}")
+            self._logApiCall(url, 'REGISTER_MUZAKI', payload, 0, None, error=str(e))
             return {'success': False, 'error': str(e)}
 
     def saveTransaction(self, npwz, amount, tanggal, tipe_zakat, order_id, program=None, via=None):
@@ -272,10 +312,12 @@ class SimbaIntegration:
             )
 
             response_text = response.text
+            response_status = response.status_code
 
             # Check for Cloudflare protection
             if 'Just a moment' in response_text or 'cf-chl-bypass' in response_text:
                 print(f"[SIMBA] Cloudflare protection detected")
+                self._logApiCall(url, 'SAVE_TRANSACTION', payload, response_status, {'error': 'Cloudflare Protection'})
                 return {'success': False, 'error': 'Cloudflare Protection'}
 
             # Parse JSON response
@@ -283,7 +325,11 @@ class SimbaIntegration:
                 result = json.loads(response_text)
             except:
                 print(f"[SIMBA] Invalid JSON response: {response_text[:200]}")
+                self._logApiCall(url, 'SAVE_TRANSACTION', payload, response_status, {'error': 'Invalid JSON', 'raw': response_text[:200]})
                 return {'success': False, 'error': 'Invalid JSON response'}
+
+            # Log API call
+            self._logApiCall(url, 'SAVE_TRANSACTION', payload, response_status, result)
 
             # Check status
             if result.get('status_code') in ['00', '000']:
@@ -297,9 +343,11 @@ class SimbaIntegration:
 
         except requests.Timeout:
             print(f"[SIMBA] Transaction save timeout")
+            self._logApiCall(url, 'SAVE_TRANSACTION', payload, 0, None, error='Request timeout')
             return {'success': False, 'error': 'Request timeout'}
         except Exception as e:
             print(f"[SIMBA] Transaction save error: {str(e)}")
+            self._logApiCall(url, 'SAVE_TRANSACTION', payload, 0, None, error=str(e))
             return {'success': False, 'error': str(e)}
 
     def _cleanAccountString(self, acc, length=12):
