@@ -232,8 +232,28 @@ def transactionHistory():
     
     page = request.args.get('page', 1)
     pageSize = request.args.get('pageSize', 10)
+
+    # Date Filtering
+    try:
+        from datetime import datetime
+        import calendar
+        
+        now = datetime.now()
+        month = int(request.args.get('month', now.month))
+        year = int(request.args.get('year', now.year))
+        
+        # Calculate First and Last Day of Month
+        # Note: Simple local time, but formatted with +07:00 suffix for DANA
+        fromDate = f"{year}-{month:02d}-01T00:00:00+07:00"
+        
+        last_day_val = calendar.monthrange(year, month)[1]
+        toDate = f"{year}-{month:02d}-{last_day_val}T23:59:59+07:00"
+    except Exception as e:
+        print(f"Date parsing error: {e}")
+        fromDate = None
+        toDate = None
     
-    return danaPaymentService.transactionHistory(userId, page, pageSize)
+    return danaPaymentService.transactionHistory(userId, page, pageSize, fromDate, toDate)
 
 
 @dana_bp.route('/history/<refNo>', methods=['GET'])
