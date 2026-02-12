@@ -88,7 +88,7 @@ class Config:
     SIMBA_ORG = os.getenv("SIMBA_ORG", "")
     SIMBA_KEY = os.getenv("SIMBA_KEY", "")
     SIMBA_DIVISI = os.getenv("SIMBA_DIVISI", "22")
-    SIMBA_AMIL_EMAIL = os.getenv("SIMBA_AMIL_EMAIL", "")
+    SIMBA_AMIL_EMAIL = os.getenv("SIMBA_AMIL_EMAIL", "baznasprov.demo@baznas.or.id")
     
     # SIMBA Account Mappings (akan di-fetch dari API ajax_payment_gateway)
     # Ini adalah default fallback jika API gagal
