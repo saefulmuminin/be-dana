@@ -994,7 +994,7 @@ class DanaPaymentService:
         except Exception as e:
             return {'success': False, 'error': str(e)}
 
-    def transactionHistory(self, userId, page=1, pageSize=10, fromDate=None, toDate=None):
+    def transactionHistory(self, userId, page=1, pageSize=10):
         """Get user transaction history"""
         try:
             print(f"DEBUG HISTORY: findById({userId})")
@@ -1010,8 +1010,8 @@ class DanaPaymentService:
                 print(f"DEBUG HISTORY: Access Token missing")
                 return Response.error("User not connected to DANA", 400)
             
-            print(f"DEBUG HISTORY: Calling DANA History API... ({fromDate} to {toDate})")
-            result = self._callDanaTransactionHistoryApi(accessToken, page, pageSize, fromDate, toDate)
+            print(f"DEBUG HISTORY: Calling DANA History API...")
+            result = self._callDanaTransactionHistoryApi(accessToken, page, pageSize)
             
             if result['success']:
                 print(f"DEBUG HISTORY: SUCCESS")
