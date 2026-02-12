@@ -103,40 +103,57 @@ class SimbaIntegration:
         Returns: {'akun': '...', 'kadar': '...'}
         """
         config = self.getSimbaConfig()
+        
+        print(f"[SIMBA] Getting account mapping for: {tipe_zakat}")
+        print(f"[SIMBA] Config available: {config is not None}")
+        
         if not config:
             print(f"[SIMBA] Using fallback account mapping for {tipe_zakat}")
             # Fallback ke environment variables
             return self._getFallbackAccountMapping(tipe_zakat)
 
+        # Debug: print config keys
+        print(f"[SIMBA] Config keys: {list(config.keys()) if config else 'None'}")
+
         # Clean account string (remove dots, limit length)
         def cleanAccount(acc, length=12):
             if not acc:
                 return ''
-            return acc.replace('.', '')[:length]
+            cleaned = str(acc).replace('.', '')[:length]
+            print(f"[SIMBA] Cleaned account: {acc} → {cleaned}")
+            return cleaned
 
         # Mapping berdasarkan tipe zakat
         tipe_lower = tipe_zakat.lower().strip()
 
-        if tipe_lower in ['zakat penghasilan', 'zakatpenghasilan']:
-            return {
-                'akun': cleanAccount(config.get('zakatpenghasilanakun', '')),
+        account_info = None
+        if tipe_lower in ['zakat penghasilan', 'zakatpenghasilan', 'zakat']:
+            akun = cleanAccount(config.get('zakatpenghasilanakun', ''))
+            account_info = {
+                'akun': akun if akun else Config.SIMBA_ACCOUNT_ZAKAT_PENGHASILAN,
                 'kadar': '2.5'
             }
         elif tipe_lower in ['zakat fitrah', 'zakatfitrah']:
-            return {
-                'akun': cleanAccount(config.get('zakatfitrahakun', '')),
+            akun = cleanAccount(config.get('zakatfitrahakun', ''))
+            account_info = {
+                'akun': akun if akun else Config.SIMBA_ACCOUNT_ZAKAT_FITRAH,
                 'kadar': '0'
             }
         elif tipe_lower == 'fidyah':
-            return {
-                'akun': cleanAccount(config.get('fidyahakun', '')),
+            akun = cleanAccount(config.get('fidyahakun', ''))
+            account_info = {
+                'akun': akun if akun else Config.SIMBA_ACCOUNT_FIDYAH,
                 'kadar': '0'
             }
         else:  # Default: infak/sedekah
-            return {
-                'akun': cleanAccount(config.get('infak_akun', '')),
+            akun = cleanAccount(config.get('infak_akun', ''))
+            account_info = {
+                'akun': akun if akun else Config.SIMBA_ACCOUNT_INFAK,
                 'kadar': '0'
             }
+        
+        print(f"[SIMBA] Account mapping result: {account_info}")
+        return account_info
 
     def _getFallbackAccountMapping(self, tipe_zakat):
         """Fallback mapping dari environment variables"""
@@ -191,7 +208,8 @@ class SimbaIntegration:
                 'tipe': tipe,
                 'action': 'register',
                 'tanggal': tanggal,
-                'verifikasi': 'handphone' if handphone else 'email'
+                'verifikasi': 'handphone' if handphone else 'email',
+                'amil': self.amil_email  # Required field: Amil penanggungjawab
             }
 
             print(f"[SIMBA] Registering muzaki: {nama} ({email or handphone})")
