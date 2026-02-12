@@ -706,40 +706,64 @@ class DanaAuthService:
     # Database
     # =========================================================================
 
-    def _getOrCreateUser(self, externalId, userInfo):
+    def _getOrCreateUser(self, userInfo, externalId):
         """
-        Search priority:
-        1. external_id (returning DANA user)
-        2. email (match login server existing)
-        3. phone (fallback)
-        4. Create new
+        Get or create user based on DANA info
+        Using local UserModel to ensure clean transaction state
         """
+        from src.models.user_model import UserModel
+        localUserModel = UserModel()
+        
         try:
             email = userInfo.get('email')
             phone = userInfo.get('phone')
+            
+            # Format phone
+            if phone and phone.startswith('62'):
+                pass  # Keep 62
+            elif phone and phone.startswith('0'):
+                phone = '62' + phone[1:]
+                
             user = None
 
+            # 1. Try find by dana_external_id
             if externalId:
                 try:
-                    user = self.userModel.findByDanaExternalId(externalId)
+                    user = localUserModel.findByDanaExternalId(externalId)
                     if user:
                         print(f"[AUTH] Found by external_id: {user.get('id')}")
                 except Exception as e:
                     print(f"[AUTH] DB Error (findByDanaExternalId): {str(e)}")
                     try:
-                        self.userModel.conn.rollback()
+                        localUserModel.conn.rollback()
                     except:
                         pass
 
+            # 2. Try find by email
             if not user and email:
-                user = self.userModel.findByEmail(email)
-                if user:
-                    print(f"[AUTH] Found by email: {user.get('id')} ({email})")
+                try:
+                    user = localUserModel.findByEmail(email)
+                    if user:
+                        print(f"[AUTH] Found by email: {user.get('id')} ({email})")
+                except Exception as e:
+                    print(f"[AUTH] DB Error (findByEmail): {str(e)}")
+                    try:
+                        localUserModel.conn.rollback()
+                    except:
+                        pass 
 
+            # 3. Try find by phone
             if not user and phone:
-                user = self.userModel.findByPhone(phone)
-                if user:
-                    print(f"[AUTH] Found by phone: {user.get('id')}")
+                try:
+                    user = localUserModel.findByPhone(phone)
+                    if user:
+                        print(f"[AUTH] Found by phone: {user.get('id')}")
+                except Exception as e:
+                    print(f"[AUTH] DB Error (findByPhone): {str(e)}")
+                    try:
+                        localUserModel.conn.rollback()
+                    except:
+                        pass
 
             if not user:
                 print(f"[AUTH] Creating new user: email={email}, phone={phone}")
@@ -764,9 +788,9 @@ class DanaAuthService:
                 print(f"[AUTH] Inserting user data: {userData}")
                 
                 try:
-                    userId = self.userModel.create(userData)
+                    userId = localUserModel.create(userData)
                     if userId:
-                        user = self.userModel.findById(userId)
+                        user = localUserModel.findById(userId)
                         print(f"[AUTH] Created user ID: {userId}")
                     else:
                         print(f"[AUTH] Create returned None ID")
@@ -774,13 +798,21 @@ class DanaAuthService:
                     print(f"[AUTH] Create failed: {str(createErr)}")
                     import traceback
                     traceback.print_exc()
+                    try:
+                        localUserModel.conn.rollback()
+                    except:
+                        pass
                     raise createErr
             else:
-                if not user.get('external_id'):
-                    self.userModel.updateExternalId(user['id'], externalId)
-                if not user.get('dana_external_id'):
+                try:
+                    if not user.get('external_id'):
+                        localUserModel.updateExternalId(user['id'], externalId)
+                    if not user.get('dana_external_id'):
+                        localUserModel.updateDanaToken(user['id'], {'dana_external_id': externalId})
+                except Exception as updateErr:
+                    print(f"[AUTH] Update user failed: {str(updateErr)}")
                     try:
-                        self.userModel.updateDanaToken(user['id'], {'dana_external_id': externalId})
+                        localUserModel.conn.rollback()
                     except:
                         pass
 
@@ -791,10 +823,11 @@ class DanaAuthService:
             print(f"[AUTH] Get/Create user FATAL error: {errorMsg}")
             import traceback
             traceback.print_exc()
-            
-            # Rollback if transaction is aborted or failed
+            return None
+        finally:
+            # Always close local connection!
             try:
-                self.userModel.conn.rollback()
+                localUserModel.close()
             except:
                 pass
                 
