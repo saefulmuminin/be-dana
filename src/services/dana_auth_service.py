@@ -822,7 +822,12 @@ class DanaAuthService:
             
             print(f"[AUTH-DEBUG] Returning user: {dict(user) if user else 'None'}")
             final_result = dict(user) if user else None
-            # print(f"[AUTH-DEBUG] final_result TYPE: {type(final_result)}")
+            
+            try:
+                localUserModel.close()
+            except:
+                pass
+            
             return final_result
 
         except BaseException as e:
@@ -830,20 +835,14 @@ class DanaAuthService:
             print(f"[AUTH] Get/Create user FATAL (BaseException): {errorMsg}")
             import traceback
             traceback.print_exc()
-            return None
-        finally:
-            # Always close local connection!
+            
             try:
-                # print("[DEBUG-LOCAL] Closing local connection")
                 localUserModel.close()
-            except BaseException as e:
-                print(f"[AUTH] Failed to close local connection: {str(e)}")
+            except:
+                pass
                 
-            # If error is about valid transaction state or table, 
-            # ensure we return proper user structure (dummy)
             return None
 
-    # =========================================================================
     # JWT
     # =========================================================================
 
