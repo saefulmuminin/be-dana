@@ -16,10 +16,15 @@ def token_required(f):
         # Ambil token dari header Authorization
         if 'Authorization' in request.headers:
             auth_header = request.headers['Authorization']
+            print(f"[AUTH_MIDDLEWARE] Authorization header: {auth_header[:50]}...")
             if auth_header.startswith('Bearer '):
                 token = auth_header.split(' ')[1]
+                print(f"[AUTH_MIDDLEWARE] Token extracted: {token[:20]}...")
+        else:
+            print(f"[AUTH_MIDDLEWARE] No Authorization header found")
 
         if not token:
+            print(f"[AUTH_MIDDLEWARE] Token missing, returning 401")
             return jsonify({
                 "status_code": 401,
                 "status": "error",

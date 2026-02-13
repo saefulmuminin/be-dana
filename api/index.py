@@ -17,13 +17,22 @@ except Exception as e:
 
 # Register blueprints with error handling
 try:
-    from src.routes.api_routes import auth_bp, dana_bp, user_bp, disburse_bp
+    from src.routes.api_routes import auth_bp, dana_bp, user_bp, disburse_bp, snap_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(dana_bp)
     app.register_blueprint(user_bp)
     app.register_blueprint(disburse_bp)
+    app.register_blueprint(snap_bp)
+
+    # Print registered routes for debugging
+    print("[API] Successfully registered blueprints. Routes:")
+    for rule in app.url_map.iter_rules():
+        if not rule.rule.startswith('/static'):
+            print(f"  {rule.rule} [{', '.join(sorted(rule.methods - {'OPTIONS', 'HEAD'}))}]")
 except Exception as e:
     print(f"Blueprint Error: {e}")
+    import traceback
+    traceback.print_exc()
 
 @app.route('/')
 def health_check():

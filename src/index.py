@@ -15,6 +15,11 @@ app.register_blueprint(disburse_bp)
 # Register SNAP API Blueprint (ASPI-mandated paths)
 app.register_blueprint(snap_bp)
 
+# Print registered routes for debugging
+print("[APP] Registered routes:")
+for rule in app.url_map.iter_rules():
+    print(f"  {rule.rule} [{', '.join(rule.methods)}]")
+
 @app.route('/')
 def health_check():
     return HealthService().getHealthStatus()

@@ -3,7 +3,7 @@ Model untuk logging transaksi DANA
 Menyimpan semua transaksi DANA (pending, success, failed, cancelled) untuk tracking
 """
 
-from src.config.database import Database
+from src.utils.database import Database
 import json
 from datetime import datetime
 
