@@ -205,7 +205,7 @@ class LogDanaTransactionModel:
     def getByUserId(self, user_id, page=1, page_size=10):
         """
         Ambil transaksi berdasarkan user_id dengan pagination
-        Include campaign name from adm_campaign_donasi
+        Include campaign name and institution name
 
         Args:
             user_id: ID user
@@ -213,7 +213,7 @@ class LogDanaTransactionModel:
             page_size: Jumlah record per halaman
 
         Returns:
-            List of user transactions with campaign info
+            List of user transactions with campaign and institution info
         """
         try:
             offset = (page - 1) * page_size
@@ -223,10 +223,13 @@ class LogDanaTransactionModel:
                         t.*,
                         d.campaign_id,
                         c.name as campaign_name,
-                        c.kategori as campaign_kategori
+                        c.kategori as campaign_kategori,
+                        k.name as institution_name,
+                        k.kode_institusi
                     FROM {self.table_name} t
                     LEFT JOIN adm_campaign_donasi d ON t.order_id = d.order_id
                     LEFT JOIN adm_campaign c ON d.campaign_id = c.id
+                    LEFT JOIN ref_kantor k ON c.kode_institusi = k.id
                     WHERE t.user_id = %s
                     ORDER BY t.created_time DESC, t.webhook_received_at DESC
                     LIMIT %s OFFSET %s
@@ -240,7 +243,7 @@ class LogDanaTransactionModel:
     def getByEmail(self, email, page=1, page_size=10):
         """
         Ambil transaksi berdasarkan email dengan pagination
-        Include campaign name from adm_campaign_donasi
+        Include campaign name and institution name
 
         Args:
             email: Email user
@@ -248,7 +251,7 @@ class LogDanaTransactionModel:
             page_size: Jumlah record per halaman
 
         Returns:
-            List of user transactions with campaign info
+            List of user transactions with campaign and institution info
         """
         try:
             offset = (page - 1) * page_size
@@ -258,10 +261,13 @@ class LogDanaTransactionModel:
                         t.*,
                         d.campaign_id,
                         c.name as campaign_name,
-                        c.kategori as campaign_kategori
+                        c.kategori as campaign_kategori,
+                        k.name as institution_name,
+                        k.kode_institusi
                     FROM {self.table_name} t
                     LEFT JOIN adm_campaign_donasi d ON t.order_id = d.order_id
                     LEFT JOIN adm_campaign c ON d.campaign_id = c.id
+                    LEFT JOIN ref_kantor k ON c.kode_institusi = k.id
                     WHERE t.email = %s
                     ORDER BY t.created_time DESC, t.webhook_received_at DESC
                     LIMIT %s OFFSET %s

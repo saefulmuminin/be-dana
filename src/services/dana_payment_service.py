@@ -1123,6 +1123,7 @@ class DanaPaymentService:
                     "paymentMethod": tx.get('payment_method'),
                     "campaignName": tx.get('campaign_name'),
                     "campaignKategori": tx.get('campaign_kategori'),
+                    "institutionName": tx.get('institution_name'),
                     "source": "local_database"
                 })
 
@@ -1215,17 +1216,20 @@ class DanaPaymentService:
             # Try to find by dana_reference_no or order_id (with campaign info)
             transaction = None
 
-            # Query with JOIN to get campaign info
+            # Query with JOIN to get campaign and institution info
             with logModel.conn.cursor() as cursor:
                 cursor.execute(f"""
                     SELECT
                         t.*,
                         d.campaign_id,
                         c.name as campaign_name,
-                        c.kategori as campaign_kategori
+                        c.kategori as campaign_kategori,
+                        k.name as institution_name,
+                        k.kode_institusi
                     FROM {logModel.table_name} t
                     LEFT JOIN adm_campaign_donasi d ON t.order_id = d.order_id
                     LEFT JOIN adm_campaign c ON d.campaign_id = c.id
+                    LEFT JOIN ref_kantor k ON c.kode_institusi = k.id
                     WHERE t.dana_reference_no = %s OR t.order_id = %s
                     ORDER BY t.webhook_received_at DESC
                     LIMIT 1
@@ -1256,6 +1260,7 @@ class DanaPaymentService:
                 "paymentMethod": transaction.get('payment_method'),
                 "campaignName": transaction.get('campaign_name'),
                 "campaignKategori": transaction.get('campaign_kategori'),
+                "institutionName": transaction.get('institution_name'),
                 "additionalInfo": transaction.get('raw_payload'),
                 "source": "local_database"
             }
