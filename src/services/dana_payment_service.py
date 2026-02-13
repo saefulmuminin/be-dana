@@ -1332,8 +1332,12 @@ class DanaPaymentService:
                 
                 # Extract user data
                 if user:
-                    user_name = user.get('name') or user.get('username')
-                    user_phone = user.get('phone', '')
+                    # Map database fields correctly: full_name (not name), handphone (not phone)
+                    user_name = user.get('full_name') or user.get('username')
+                    user_phone = user.get('handphone', '')
+                    # Remove country code prefix if exists (62- → empty)
+                    if user_phone and user_phone.startswith('62-'):
+                        user_phone = user_phone.replace('62-', '')
                     print(f"[SIMBA] User data: name={user_name}, phone={user_phone}")
                 else:
                     print(f"[SIMBA] No user found for email={email}, created_by={created_by}")
