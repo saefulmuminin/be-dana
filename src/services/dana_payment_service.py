@@ -1058,88 +1058,36 @@ class DanaPaymentService:
             return {'success': False, 'error': str(e)}
 
     def transactionHistory(self, userId, page=1, pageSize=10):
-        """
-        Get user transaction history from local database
-        with campaign and institution details
-        """
+        """Get user transaction history"""
         try:
-            print(f"[HISTORY] Getting history for userId={userId}, page={page}, pageSize={pageSize}")
+            print(f"DEBUG HISTORY: findById({userId})")
+            user = self.userModel.findById(userId)
+            if not user:
+                print(f"DEBUG HISTORY: User not found for ID {userId}")
+                return Response.error("User not found", 404)
             
-            # Calculate offset for pagination
-            offset = (int(page) - 1) * int(pageSize)
+            accessToken = user.get('dana_access_token')
+            print(f"DEBUG HISTORY: User found. AccessToken={accessToken[:10] if accessToken else 'None'}")
             
-            # Get donations from database with campaign and institution details
-            donations = self.donationModel.getHistoryByUserIdWithDetails(
-                userId=userId,
-                limit=int(pageSize),
-                offset=offset
-            )
+            if not accessToken:
+                print(f"DEBUG HISTORY: Access Token missing")
+                return Response.error("User not connected to DANA", 400)
             
-            if not donations:
-                print(f"[HISTORY] No donations found for user {userId}")
-                return Response.success(data={
-                    'detailData': [],
-                    'page': int(page),
-                    'pageSize': int(pageSize),
-                    'total': 0
-                }, message="No transactions found")
+            print(f"DEBUG HISTORY: Calling DANA History API...")
+            result = self._callDanaTransactionHistoryApi(accessToken, page, pageSize)
             
-            # Format data for frontend
-            detailData = []
-            for donation in donations:
-                detailData.append({
-                    'orderId': donation.get('order_id'),
-                    'partnerReferenceNo': donation.get('partner_reference_no'),
-                    'danaReferenceNo': donation.get('dana_reference_no'),
-                    'amount': {
-                        'value': str(donation.get('total_bayar', 0)),
-                        'currency': 'IDR'
-                    },
-                    'status': donation.get('status'),
-                    'statusDesc': self._mapStatusToDesc(donation.get('status')),
-                    'dateTime': donation.get('created_date').isoformat() if donation.get('created_date') else None,
-                    'paidTime': donation.get('dana_paid_at').isoformat() if donation.get('dana_paid_at') else None,
-                    'campaign': {
-                        'id': donation.get('campaign_id'),
-                        'name': donation.get('nama_campaign'),
-                        'description': donation.get('campaign_deskripsi'),
-                        'image': donation.get('campaign_gambar')
-                    },
-                    'institution': {
-                        'id': donation.get('institusi_id'),
-                        'name': donation.get('institusi_nama'),
-                        'logo': donation.get('institusi_logo')
-                    },
-                    'donationType': donation.get('tipe_zakat'),
-                    'donorName': donation.get('nama_lengkap'),
-                    'email': donation.get('email'),
-                    'isAnonymous': donation.get('hamba_allah') == 'Y'
-                })
+            if result['success']:
+                print(f"DEBUG HISTORY: SUCCESS")
+                return Response.success(data=result['data'], message="History retrieved")
             
-            print(f"[HISTORY] Found {len(detailData)} transactions")
-            
-            return Response.success(data={
-                'detailData': detailData,
-                'page': int(page),
-                'pageSize': int(pageSize),
-                'total': len(detailData)
-            }, message="History retrieved")
+            print(f"DEBUG HISTORY: FAILED - {result.get('error')}")
+            return Response.error(f"Failed to get history: {result.get('error')}", 500)
             
         except Exception as e:
             import traceback
             errorMsg = traceback.format_exc()
-            print(f"[HISTORY] EXCEPTION - {errorMsg}")
+            print(f"DEBUG HISTORY: EXCEPTION - {errorMsg}")
             return Response.error(f"History error: {str(e)}", 500)
-    
-    def _mapStatusToDesc(self, status):
-        """Map internal status to user-friendly description"""
-        statusMap = {
-            'belum': 'Menunggu Pembayaran',
-            'berhasil': 'Berhasil',
-            'menunggu': 'Sedang Diproses',
-            'dibatalkan': 'Dibatalkan'
-        }
-        return statusMap.get(status, status)
 
     def _callDanaTransactionDetailApi(self, accessToken, danaRefNo):
         """Call DANA Transaction Detail API"""
