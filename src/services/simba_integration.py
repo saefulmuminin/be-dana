@@ -311,7 +311,8 @@ class SimbaIntegration:
                 'jumlah': str(amount),
                 'kadar': account_info['kadar'],
                 'keterangan': keterangan,
-                'amil': self.amil_email
+                'amil': self.amil_email,
+                'notif': 'false'  # Required field to prevent server error
             }
 
             print(f"[SIMBA] Saving transaction: {order_id}, Amount: {amount}, NPWZ: {npwz}")
