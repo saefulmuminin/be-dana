@@ -1058,35 +1058,81 @@ class DanaPaymentService:
             return {'success': False, 'error': str(e)}
 
     def transactionHistory(self, userId, page=1, pageSize=10):
-        """Get user transaction history"""
+        """
+        Get user transaction history
+
+        Strategy:
+        1. Try to get from DANA API if user has access token
+        2. Fallback to local database (log_dana_transaction table)
+        """
         try:
-            print(f"DEBUG HISTORY: findById({userId})")
+            print(f"[HISTORY] Finding user {userId}")
             user = self.userModel.findById(userId)
             if not user:
-                print(f"DEBUG HISTORY: User not found for ID {userId}")
+                print(f"[HISTORY] User not found for ID {userId}")
                 return Response.error("User not found", 404)
-            
+
+            email = user.get('email')
             accessToken = user.get('dana_access_token')
-            print(f"DEBUG HISTORY: User found. AccessToken={accessToken[:10] if accessToken else 'None'}")
-            
-            if not accessToken:
-                print(f"DEBUG HISTORY: Access Token missing")
-                return Response.error("User not connected to DANA", 400)
-            
-            print(f"DEBUG HISTORY: Calling DANA History API...")
-            result = self._callDanaTransactionHistoryApi(accessToken, page, pageSize)
-            
-            if result['success']:
-                print(f"DEBUG HISTORY: SUCCESS")
-                return Response.success(data=result['data'], message="History retrieved")
-            
-            print(f"DEBUG HISTORY: FAILED - {result.get('error')}")
-            return Response.error(f"Failed to get history: {result.get('error')}", 500)
-            
+            print(f"[HISTORY] User found. Email={email}, AccessToken={'Yes' if accessToken else 'No'}")
+
+            # Try DANA API first if user has access token
+            if accessToken:
+                print(f"[HISTORY] Attempting DANA API...")
+                result = self._callDanaTransactionHistoryApi(accessToken, page, pageSize)
+
+                if result['success']:
+                    print(f"[HISTORY] DANA API SUCCESS")
+                    return Response.success(data=result['data'], message="History retrieved from DANA")
+                else:
+                    print(f"[HISTORY] DANA API FAILED: {result.get('error')}")
+                    print(f"[HISTORY] Falling back to local database...")
+            else:
+                print(f"[HISTORY] No access token, using local database")
+
+            # Fallback to local database
+            logModel = LogDanaTransactionModel()
+            transactions = logModel.getByUserId(userId, page, pageSize)
+
+            # If no transactions by userId, try by email
+            if not transactions and email:
+                print(f"[HISTORY] No transactions by userId, trying email...")
+                transactions = logModel.getByEmail(email, page, pageSize)
+
+            print(f"[HISTORY] Found {len(transactions)} transactions in local DB")
+
+            # Format response similar to DANA API format
+            formatted_data = {
+                "responseCode": "2001200",
+                "responseMessage": "Success (from local database)",
+                "detailData": []
+            }
+
+            for tx in transactions:
+                formatted_data["detailData"].append({
+                    "originalPartnerReferenceNo": tx.get('partner_reference_no') or tx.get('order_id'),
+                    "originalReferenceNo": tx.get('dana_reference_no') or tx.get('order_id'),
+                    "transDateTime": tx.get('created_time').isoformat() if tx.get('created_time') else None,
+                    "amount": {
+                        "value": str(tx.get('amount', 0)),
+                        "currency": tx.get('currency', 'IDR')
+                    },
+                    "transactionStatus": tx.get('status'),
+                    "transactionStatusDesc": tx.get('status_desc'),
+                    "merchantId": tx.get('merchant_id'),
+                    "paymentMethod": tx.get('payment_method'),
+                    "source": "local_database"
+                })
+
+            return Response.success(
+                data=formatted_data,
+                message=f"History retrieved from local database ({len(transactions)} transactions)"
+            )
+
         except Exception as e:
             import traceback
             errorMsg = traceback.format_exc()
-            print(f"DEBUG HISTORY: EXCEPTION - {errorMsg}")
+            print(f"[HISTORY] EXCEPTION: {errorMsg}")
             return Response.error(f"History error: {str(e)}", 500)
 
     def _callDanaTransactionDetailApi(self, accessToken, danaRefNo):
@@ -1132,18 +1178,82 @@ class DanaPaymentService:
             return {'success': False, 'error': str(e)}
             
     def transactionDetail(self, userId, refNo):
-        """Get transaction detail"""
+        """
+        Get transaction detail
+
+        Strategy:
+        1. Try DANA API if user has access token
+        2. Fallback to local database by refNo (dana_reference_no or order_id)
+        """
         try:
+            print(f"[DETAIL] Finding user {userId}, refNo={refNo}")
             user = self.userModel.findById(userId)
-            if not user or not user.get('dana_access_token'):
-                return Response.error("User not connected to DANA", 400)
-                
-            result = self._callDanaTransactionDetailApi(user.get('dana_access_token'), refNo)
-            
-            if result['success']:
-                return Response.success(data=result['data'], message="Detail retrieved")
-            return Response.error(f"Failed to get detail: {result.get('error')}", 500)
+            if not user:
+                return Response.error("User not found", 404)
+
+            accessToken = user.get('dana_access_token')
+
+            # Try DANA API first if user has access token
+            if accessToken:
+                print(f"[DETAIL] Attempting DANA API...")
+                result = self._callDanaTransactionDetailApi(accessToken, refNo)
+
+                if result['success']:
+                    print(f"[DETAIL] DANA API SUCCESS")
+                    return Response.success(data=result['data'], message="Detail retrieved from DANA")
+                else:
+                    print(f"[DETAIL] DANA API FAILED: {result.get('error')}")
+                    print(f"[DETAIL] Falling back to local database...")
+            else:
+                print(f"[DETAIL] No access token, using local database")
+
+            # Fallback to local database
+            logModel = LogDanaTransactionModel()
+
+            # Try to find by dana_reference_no or order_id
+            transaction = None
+
+            # First, try by dana_reference_no
+            with logModel.conn.cursor() as cursor:
+                cursor.execute(f"""
+                    SELECT * FROM {logModel.table_name}
+                    WHERE dana_reference_no = %s OR order_id = %s
+                    ORDER BY webhook_received_at DESC
+                    LIMIT 1
+                """, (refNo, refNo))
+                transaction = cursor.fetchone()
+
+            if not transaction:
+                print(f"[DETAIL] Transaction not found in local DB")
+                return Response.error("Transaction not found", 404)
+
+            print(f"[DETAIL] Found transaction in local DB: {transaction.get('order_id')}")
+
+            # Format response similar to DANA API format
+            formatted_data = {
+                "responseCode": "2001200",
+                "responseMessage": "Success (from local database)",
+                "originalPartnerReferenceNo": transaction.get('partner_reference_no') or transaction.get('order_id'),
+                "originalReferenceNo": transaction.get('dana_reference_no') or transaction.get('order_id'),
+                "transDateTime": transaction.get('created_time').isoformat() if transaction.get('created_time') else None,
+                "paidTime": transaction.get('paid_time').isoformat() if transaction.get('paid_time') else None,
+                "amount": {
+                    "value": str(transaction.get('amount', 0)),
+                    "currency": transaction.get('currency', 'IDR')
+                },
+                "transactionStatus": transaction.get('status'),
+                "transactionStatusDesc": transaction.get('status_desc'),
+                "merchantId": transaction.get('merchant_id'),
+                "paymentMethod": transaction.get('payment_method'),
+                "additionalInfo": transaction.get('raw_payload'),
+                "source": "local_database"
+            }
+
+            return Response.success(data=formatted_data, message="Detail retrieved from local database")
+
         except Exception as e:
+            import traceback
+            print(f"[DETAIL] EXCEPTION: {traceback.format_exc()}")
             return Response.error(f"Detail error: {str(e)}", 500)
 
     def webhook(self, data, signature=None, headers=None):

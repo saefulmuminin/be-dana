@@ -182,10 +182,10 @@ class LogDanaTransactionModel:
     def getRecentTransactions(self, limit=10):
         """
         Ambil transaksi terbaru
-        
+
         Args:
             limit: Jumlah record yang diambil
-        
+
         Returns:
             List of recent transactions
         """
@@ -200,4 +200,58 @@ class LogDanaTransactionModel:
                 return cursor.fetchall()
         except Exception as e:
             print(f"[LOG_DANA] Error getting recent transactions: {e}")
+            return []
+
+    def getByUserId(self, user_id, page=1, page_size=10):
+        """
+        Ambil transaksi berdasarkan user_id dengan pagination
+
+        Args:
+            user_id: ID user
+            page: Halaman (mulai dari 1)
+            page_size: Jumlah record per halaman
+
+        Returns:
+            List of user transactions
+        """
+        try:
+            offset = (page - 1) * page_size
+            with self.conn.cursor() as cursor:
+                sql = f"""
+                    SELECT * FROM {self.table_name}
+                    WHERE user_id = %s
+                    ORDER BY created_time DESC, webhook_received_at DESC
+                    LIMIT %s OFFSET %s
+                """
+                cursor.execute(sql, (user_id, page_size, offset))
+                return cursor.fetchall()
+        except Exception as e:
+            print(f"[LOG_DANA] Error getting user transactions: {e}")
+            return []
+
+    def getByEmail(self, email, page=1, page_size=10):
+        """
+        Ambil transaksi berdasarkan email dengan pagination
+
+        Args:
+            email: Email user
+            page: Halaman (mulai dari 1)
+            page_size: Jumlah record per halaman
+
+        Returns:
+            List of user transactions
+        """
+        try:
+            offset = (page - 1) * page_size
+            with self.conn.cursor() as cursor:
+                sql = f"""
+                    SELECT * FROM {self.table_name}
+                    WHERE email = %s
+                    ORDER BY created_time DESC, webhook_received_at DESC
+                    LIMIT %s OFFSET %s
+                """
+                cursor.execute(sql, (email, page_size, offset))
+                return cursor.fetchall()
+        except Exception as e:
+            print(f"[LOG_DANA] Error getting user transactions by email: {e}")
             return []
