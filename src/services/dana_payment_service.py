@@ -1305,25 +1305,43 @@ class DanaPaymentService:
                 # Try to find existing muzaki by email or phone
                 email = donation.get('email', '')
                 
-                # Get user data
+                # Get user data - try multiple methods
                 user_name = None
                 user_phone = ''
+                user = None
                 
-                # Try to get user by email
-                if email:
+                # Method 1: Try to get user by created_by (might be user_id)
+                created_by = donation.get('created_by', '')
+                if created_by and created_by.startswith('user_'):
+                    try:
+                        user_id = int(created_by.replace('user_', ''))
+                        user = self.userModel.findById(user_id)
+                        if user:
+                            print(f"[SIMBA] Found user by created_by: {user_id}")
+                    except Exception as e:
+                        print(f"[SIMBA] Error parsing created_by: {e}")
+                
+                # Method 2: Try to get user by email
+                if not user and email:
                     try:
                         user = self.userModel.findByEmail(email)
                         if user:
-                            user_name = user.get('name') or user.get('username')
-                            user_phone = user.get('phone', '')
-                            print(f"[SIMBA] Found user: name={user_name}, phone={user_phone}")
+                            print(f"[SIMBA] Found user by email: {email}")
                     except Exception as userErr:
-                        print(f"[SIMBA] Error fetching user: {userErr}")
+                        print(f"[SIMBA] Error fetching user by email: {userErr}")
+                
+                # Extract user data
+                if user:
+                    user_name = user.get('name') or user.get('username')
+                    user_phone = user.get('phone', '')
+                    print(f"[SIMBA] User data: name={user_name}, phone={user_phone}")
+                else:
+                    print(f"[SIMBA] No user found for email={email}, created_by={created_by}")
                 
                 # Determine final name - use whatever is available, just skip "Hamba Allah"
                 final_name = user_name
                 
-                # If name is "Hamba Allah", use phone number instead
+                # If name is "Hamba Allah" or empty, use phone number instead
                 if not final_name or final_name.lower() == 'hamba allah':
                     final_name = user_phone if user_phone else 'Tidak Diketahui'
                     print(f"[SIMBA] Name is 'Hamba Allah' or empty, using: {final_name}")
