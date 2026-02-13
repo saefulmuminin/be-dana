@@ -751,6 +751,41 @@ CREATE TABLE IF NOT EXISTS log_api_midtrans (
 );
 
 -- ========================================================================
+-- TABLE: log_dana_transaction
+-- ========================================================================
+
+CREATE TABLE IF NOT EXISTS log_dana_transaction (
+    id BIGSERIAL PRIMARY KEY,
+    order_id VARCHAR(50) NOT NULL,
+    partner_reference_no VARCHAR(100),
+    dana_reference_no VARCHAR(100),
+    merchant_id VARCHAR(64),
+    amount DECIMAL(15, 2),
+    currency VARCHAR(3) DEFAULT 'IDR',
+    status VARCHAR(50),
+    status_desc VARCHAR(100),
+    created_time TIMESTAMP,
+    finished_time TIMESTAMP,
+    paid_time TIMESTAMP,
+    payment_method VARCHAR(50),
+    user_id INTEGER,
+    email VARCHAR(100),
+    phone VARCHAR(20),
+    raw_payload JSONB,
+    webhook_received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_date TIMESTAMP DEFAULT NULL
+);
+
+CREATE INDEX idx_log_dana_transaction_order_id ON log_dana_transaction (order_id);
+
+CREATE INDEX idx_log_dana_transaction_status ON log_dana_transaction (status);
+
+CREATE INDEX idx_log_dana_transaction_created_time ON log_dana_transaction (created_time);
+
+CREATE INDEX idx_log_dana_transaction_webhook_received ON log_dana_transaction (webhook_received_at);
+
+-- ========================================================================
 -- TABLE: ref_provinsi
 -- ========================================================================
 

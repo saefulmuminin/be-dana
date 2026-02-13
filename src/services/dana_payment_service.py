@@ -20,6 +20,7 @@ API Reference:
 from src.models.donation_model import DonationModel
 from src.models.user_model import UserModel
 from src.models.master_models import RefPaymentModel, RefCampaignModel
+from src.models.log_dana_transaction_model import LogDanaTransactionModel
 from src.services.simba_service import SimbaService
 from src.utils.response import Response
 from src.utils.database import Database
@@ -497,6 +498,29 @@ class DanaPaymentService:
                                orderData['order_id'])
             except:
                 pass  # Ignore logging errors
+
+            # Log transaction to log_dana_transaction table
+            try:
+                logModel = LogDanaTransactionModel()
+                logModel.create({
+                    'order_id': orderData['order_id'],
+                    'partner_reference_no': orderData['partner_reference_no'],
+                    'merchant_id': Config.DANA_MERCHANT_ID,
+                    'amount': orderData['total_bayar'],
+                    'currency': 'IDR',
+                    'status': 'PENDING',
+                    'status_desc': 'Order created, awaiting payment',
+                    'user_id': orderData.get('created_by', '').replace('user_', '') if orderData.get('created_by', '').startswith('user_') else None,
+                    'email': orderData.get('email', ''),
+                    'phone': orderData.get('handphone', ''),
+                    'raw_payload': {
+                        'order_data': orderData,
+                        'trade_no': tradeNO,
+                        'checkout_url': checkoutUrl
+                    }
+                })
+            except Exception as logErr:
+                print(f"[LOG_DANA] Failed to log transaction: {logErr}")
 
             return Response.success(data={
                 "orderId": orderData['order_id'],
@@ -1034,36 +1058,88 @@ class DanaPaymentService:
             return {'success': False, 'error': str(e)}
 
     def transactionHistory(self, userId, page=1, pageSize=10):
-        """Get user transaction history"""
+        """
+        Get user transaction history from local database
+        with campaign and institution details
+        """
         try:
-            print(f"DEBUG HISTORY: findById({userId})")
-            user = self.userModel.findById(userId)
-            if not user:
-                print(f"DEBUG HISTORY: User not found for ID {userId}")
-                return Response.error("User not found", 404)
+            print(f"[HISTORY] Getting history for userId={userId}, page={page}, pageSize={pageSize}")
             
-            accessToken = user.get('dana_access_token')
-            print(f"DEBUG HISTORY: User found. AccessToken={accessToken[:10] if accessToken else 'None'}")
+            # Calculate offset for pagination
+            offset = (int(page) - 1) * int(pageSize)
             
-            if not accessToken:
-                print(f"DEBUG HISTORY: Access Token missing")
-                return Response.error("User not connected to DANA", 400)
+            # Get donations from database with campaign and institution details
+            donations = self.donationModel.getHistoryByUserIdWithDetails(
+                userId=userId,
+                limit=int(pageSize),
+                offset=offset
+            )
             
-            print(f"DEBUG HISTORY: Calling DANA History API...")
-            result = self._callDanaTransactionHistoryApi(accessToken, page, pageSize)
+            if not donations:
+                print(f"[HISTORY] No donations found for user {userId}")
+                return Response.success(data={
+                    'detailData': [],
+                    'page': int(page),
+                    'pageSize': int(pageSize),
+                    'total': 0
+                }, message="No transactions found")
             
-            if result['success']:
-                print(f"DEBUG HISTORY: SUCCESS")
-                return Response.success(data=result['data'], message="History retrieved")
+            # Format data for frontend
+            detailData = []
+            for donation in donations:
+                detailData.append({
+                    'orderId': donation.get('order_id'),
+                    'partnerReferenceNo': donation.get('partner_reference_no'),
+                    'danaReferenceNo': donation.get('dana_reference_no'),
+                    'amount': {
+                        'value': str(donation.get('total_bayar', 0)),
+                        'currency': 'IDR'
+                    },
+                    'status': donation.get('status'),
+                    'statusDesc': self._mapStatusToDesc(donation.get('status')),
+                    'dateTime': donation.get('created_date').isoformat() if donation.get('created_date') else None,
+                    'paidTime': donation.get('dana_paid_at').isoformat() if donation.get('dana_paid_at') else None,
+                    'campaign': {
+                        'id': donation.get('campaign_id'),
+                        'name': donation.get('nama_campaign'),
+                        'description': donation.get('campaign_deskripsi'),
+                        'image': donation.get('campaign_gambar')
+                    },
+                    'institution': {
+                        'id': donation.get('institusi_id'),
+                        'name': donation.get('institusi_nama'),
+                        'logo': donation.get('institusi_logo')
+                    },
+                    'donationType': donation.get('tipe_zakat'),
+                    'donorName': donation.get('nama_lengkap'),
+                    'email': donation.get('email'),
+                    'isAnonymous': donation.get('hamba_allah') == 'Y'
+                })
             
-            print(f"DEBUG HISTORY: FAILED - {result.get('error')}")
-            return Response.error(f"Failed to get history: {result.get('error')}", 500)
+            print(f"[HISTORY] Found {len(detailData)} transactions")
+            
+            return Response.success(data={
+                'detailData': detailData,
+                'page': int(page),
+                'pageSize': int(pageSize),
+                'total': len(detailData)
+            }, message="History retrieved")
             
         except Exception as e:
             import traceback
             errorMsg = traceback.format_exc()
-            print(f"DEBUG HISTORY: EXCEPTION - {errorMsg}")
+            print(f"[HISTORY] EXCEPTION - {errorMsg}")
             return Response.error(f"History error: {str(e)}", 500)
+    
+    def _mapStatusToDesc(self, status):
+        """Map internal status to user-friendly description"""
+        statusMap = {
+            'belum': 'Menunggu Pembayaran',
+            'berhasil': 'Berhasil',
+            'menunggu': 'Sedang Diproses',
+            'dibatalkan': 'Dibatalkan'
+        }
+        return statusMap.get(status, status)
 
     def _callDanaTransactionDetailApi(self, accessToken, danaRefNo):
         """Call DANA Transaction Detail API"""
@@ -1226,6 +1302,37 @@ class DanaPaymentService:
             # Map DANA status ke internal status untuk sync ke SIMBA
             internalStatus = self._mapDanaStatus(status)
             print(f"[WEBHOOK] DANA status '{status}' mapped to internal status: '{internalStatus}'")
+
+            # Log transaction to log_dana_transaction table
+            try:
+                logModel = LogDanaTransactionModel()
+                
+                # Extract payment info
+                paymentInfo = data.get('additionalInfo', {}).get('paymentInfo', {})
+                payOptionInfos = paymentInfo.get('payOptionInfos', [])
+                paymentMethod = payOptionInfos[0].get('payMethod', '') if payOptionInfos else ''
+                paidTime = paymentInfo.get('paidTime', '')
+                
+                logModel.create({
+                    'order_id': donation.get('order_id'),
+                    'partner_reference_no': partnerRef,
+                    'dana_reference_no': danaRef,
+                    'merchant_id': data.get('merchantId', ''),
+                    'amount': amount,
+                    'currency': currency,
+                    'status': status,
+                    'status_desc': statusDesc,
+                    'created_time': data.get('createdTime'),
+                    'finished_time': data.get('finishedTime'),
+                    'paid_time': paidTime,
+                    'payment_method': paymentMethod,
+                    'user_id': donation.get('created_by', '').replace('user_', '') if donation.get('created_by', '').startswith('user_') else None,
+                    'email': donation.get('email', ''),
+                    'phone': donation.get('handphone', ''),
+                    'raw_payload': data
+                })
+            except Exception as logErr:
+                print(f"[LOG_DANA] Failed to log webhook transaction: {logErr}")
 
             # Sync ke SIMBA jika sukses
             if internalStatus == 'berhasil':
