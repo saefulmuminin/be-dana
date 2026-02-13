@@ -205,6 +205,7 @@ class LogDanaTransactionModel:
     def getByUserId(self, user_id, page=1, page_size=10):
         """
         Ambil transaksi berdasarkan user_id dengan pagination
+        Include campaign name from adm_campaign_donasi
 
         Args:
             user_id: ID user
@@ -212,15 +213,22 @@ class LogDanaTransactionModel:
             page_size: Jumlah record per halaman
 
         Returns:
-            List of user transactions
+            List of user transactions with campaign info
         """
         try:
             offset = (page - 1) * page_size
             with self.conn.cursor() as cursor:
                 sql = f"""
-                    SELECT * FROM {self.table_name}
-                    WHERE user_id = %s
-                    ORDER BY created_time DESC, webhook_received_at DESC
+                    SELECT
+                        t.*,
+                        d.campaign_id,
+                        c.name as campaign_name,
+                        c.kategori as campaign_kategori
+                    FROM {self.table_name} t
+                    LEFT JOIN adm_campaign_donasi d ON t.order_id = d.order_id
+                    LEFT JOIN adm_campaign c ON d.campaign_id = c.id
+                    WHERE t.user_id = %s
+                    ORDER BY t.created_time DESC, t.webhook_received_at DESC
                     LIMIT %s OFFSET %s
                 """
                 cursor.execute(sql, (user_id, page_size, offset))
@@ -232,6 +240,7 @@ class LogDanaTransactionModel:
     def getByEmail(self, email, page=1, page_size=10):
         """
         Ambil transaksi berdasarkan email dengan pagination
+        Include campaign name from adm_campaign_donasi
 
         Args:
             email: Email user
@@ -239,15 +248,22 @@ class LogDanaTransactionModel:
             page_size: Jumlah record per halaman
 
         Returns:
-            List of user transactions
+            List of user transactions with campaign info
         """
         try:
             offset = (page - 1) * page_size
             with self.conn.cursor() as cursor:
                 sql = f"""
-                    SELECT * FROM {self.table_name}
-                    WHERE email = %s
-                    ORDER BY created_time DESC, webhook_received_at DESC
+                    SELECT
+                        t.*,
+                        d.campaign_id,
+                        c.name as campaign_name,
+                        c.kategori as campaign_kategori
+                    FROM {self.table_name} t
+                    LEFT JOIN adm_campaign_donasi d ON t.order_id = d.order_id
+                    LEFT JOIN adm_campaign c ON d.campaign_id = c.id
+                    WHERE t.email = %s
+                    ORDER BY t.created_time DESC, t.webhook_received_at DESC
                     LIMIT %s OFFSET %s
                 """
                 cursor.execute(sql, (email, page_size, offset))

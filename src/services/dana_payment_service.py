@@ -1121,6 +1121,8 @@ class DanaPaymentService:
                     "transactionStatusDesc": tx.get('status_desc'),
                     "merchantId": tx.get('merchant_id'),
                     "paymentMethod": tx.get('payment_method'),
+                    "campaignName": tx.get('campaign_name'),
+                    "campaignKategori": tx.get('campaign_kategori'),
                     "source": "local_database"
                 })
 
@@ -1210,15 +1212,22 @@ class DanaPaymentService:
             # Fallback to local database
             logModel = LogDanaTransactionModel()
 
-            # Try to find by dana_reference_no or order_id
+            # Try to find by dana_reference_no or order_id (with campaign info)
             transaction = None
 
-            # First, try by dana_reference_no
+            # Query with JOIN to get campaign info
             with logModel.conn.cursor() as cursor:
                 cursor.execute(f"""
-                    SELECT * FROM {logModel.table_name}
-                    WHERE dana_reference_no = %s OR order_id = %s
-                    ORDER BY webhook_received_at DESC
+                    SELECT
+                        t.*,
+                        d.campaign_id,
+                        c.name as campaign_name,
+                        c.kategori as campaign_kategori
+                    FROM {logModel.table_name} t
+                    LEFT JOIN adm_campaign_donasi d ON t.order_id = d.order_id
+                    LEFT JOIN adm_campaign c ON d.campaign_id = c.id
+                    WHERE t.dana_reference_no = %s OR t.order_id = %s
+                    ORDER BY t.webhook_received_at DESC
                     LIMIT 1
                 """, (refNo, refNo))
                 transaction = cursor.fetchone()
@@ -1245,6 +1254,8 @@ class DanaPaymentService:
                 "transactionStatusDesc": transaction.get('status_desc'),
                 "merchantId": transaction.get('merchant_id'),
                 "paymentMethod": transaction.get('payment_method'),
+                "campaignName": transaction.get('campaign_name'),
+                "campaignKategori": transaction.get('campaign_kategori'),
                 "additionalInfo": transaction.get('raw_payload'),
                 "source": "local_database"
             }
