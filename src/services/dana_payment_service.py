@@ -1239,6 +1239,10 @@ class DanaPaymentService:
                     transaction = cursor.fetchone()
             except Exception as e:
                 print(f"[DETAIL] Failed to query log table: {str(e)}")
+                try:
+                    logModel.conn.rollback()
+                except:
+                    pass
                 transaction = None
 
             # Fallback: Query adm_campaign_donasi directly if not found in log
