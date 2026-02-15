@@ -170,12 +170,15 @@ class DonationModel(BaseModel):
         # Map DANA status ke internal status
         status_map = {
             'SUCCESS': 'berhasil',
+            '00': 'berhasil',
+            '05': 'dibatalkan',
             'FAILED': 'dibatalkan',
             'PENDING': 'menunggu',
             'CANCELLED': 'dibatalkan'
         }
         db_status = status_map.get(danaStatus, 'menunggu')
-        dana_paid_at = datetime.now() if danaStatus == 'SUCCESS' else None
+        is_success = danaStatus == 'SUCCESS' or danaStatus == '00'
+        dana_paid_at = datetime.now() if is_success else None
 
         try:
             with self.conn.cursor() as cursor:

@@ -282,17 +282,18 @@ def simulateWebhook(orderId):
     """
     print(f"[SIMULATION] Simulating webhook for order: {orderId}")
     
-    # Construct mock success payload
+    # Construct mock success payload (Finish Notify format)
     payload = {
-        "merchantTransId": orderId,
-        "finishedTime": "2026-02-16T12:00:00+07:00",
-        "status": "SUCCESS",
+        "originalPartnerReferenceNo": orderId,
+        "originalReferenceNo": f"DANA-SIM-{orderId}",
+        "merchantId": "DANA_MERCHANT_ID_SIM",
         "amount": {
             "value": "10000.00",
             "currency": "IDR"
         },
-        "referenceNo": f"DANA-SIM-{orderId}",
-        "partnerReferenceNo": f"PARTNER-SIM-{orderId}"
+        "latestTransactionStatus": "00",
+        "transactionStatusDesc": "Payment Success",
+        "finishedTime": datetime.now().strftime('%Y-%m-%dT%H:%M:%S+07:00')
     }
     
     # Call webhook handler
