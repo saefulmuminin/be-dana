@@ -1236,6 +1236,26 @@ class DanaPaymentService:
                 """, (refNo, refNo))
                 transaction = cursor.fetchone()
 
+            # Fallback: Query adm_campaign_donasi directly if not found in log
+            if not transaction:
+                print(f"[DETAIL] Not found in log, searching adm_campaign_donasi...")
+                with logModel.conn.cursor() as cursor:
+                    cursor.execute(f"""
+                        SELECT 
+                            d.order_id, d.partner_reference_no, d.dana_reference_no, d.status, 
+                            d.nominal as amount, d.tgl_donasi as created_time, d.paid_date as paid_time,
+                            d.campaign_id, d.payment_type as payment_method,
+                            c.name as campaign_name, c.kategori as campaign_kategori,
+                            k.name as institution_name, k.kode_institusi,
+                            'adm_campaign_donasi' as source_table
+                        FROM adm_campaign_donasi d
+                        LEFT JOIN adm_campaign c ON d.campaign_id = c.id
+                        LEFT JOIN ref_kantor k ON c.kode_institusi = k.id
+                        WHERE d.dana_reference_no = %s OR d.order_id = %s
+                        LIMIT 1
+                    """, (refNo, refNo))
+                    transaction = cursor.fetchone()
+
             if not transaction:
                 print(f"[DETAIL] Transaction not found in local DB")
                 return Response.error("Transaction not found", 404)
@@ -1467,9 +1487,9 @@ class DanaPaymentService:
             # Filter by Status
             if status:
                 if status.lower() == 'berhasil':
-                    sql += " AND d.status IN ('berhasil', 'settlement', 'capture', 'success')"
+                    sql += " AND d.status = 'berhasil'"
                 elif status.lower() == 'pending':
-                    sql += " AND d.status IN ('pending', 'challenge')"
+                    sql += " AND d.status = 'pending'"
                 elif status.lower() != 'all':
                     sql += " AND d.status = %s"
                     params.append(status.lower())

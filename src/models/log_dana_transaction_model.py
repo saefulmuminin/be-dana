@@ -11,7 +11,7 @@ from datetime import datetime
 class LogDanaTransactionModel:
     def __init__(self):
         self.db = Database()
-        self.conn = self.db.get_connection()
+        self.conn = self.db.getConnection()
         self.table_name = 'log_dana_transaction'
 
     def create(self, data):
