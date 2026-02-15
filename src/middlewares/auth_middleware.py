@@ -45,6 +45,7 @@ def token_required(f):
             }
 
         except jwt.ExpiredSignatureError:
+            print("[AUTH_MIDDLEWARE] Token expired")
             return jsonify({
                 "status_code": 401,
                 "status": "error",
@@ -52,6 +53,7 @@ def token_required(f):
             }), 401
 
         except jwt.InvalidTokenError as e:
+            print(f"[AUTH_MIDDLEWARE] Invalid token: {str(e)}")
             return jsonify({
                 "status_code": 401,
                 "status": "error",

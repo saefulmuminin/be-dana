@@ -167,11 +167,11 @@ def applyOtt():
     return danaPaymentService.applyOtt(request.json or {})
 
 
-@dana_bp.route('/history/filter', methods=['GET'])
+@dana_bp.route('/history', methods=['GET'])
 @token_required
 def transactionHistoryFilter():
     """
-    Get transaction history
+    Get transaction history (Filtered)
     Headers: Authorization: Bearer <token>
     Query Params: month, year, status, limit, offset
     """
@@ -244,9 +244,9 @@ def balanceInquiry():
     return danaPaymentService.balanceInquiry(userId)
 
 
-@dana_bp.route('/history', methods=['GET'])
+@dana_bp.route('/history/paged', methods=['GET'])
 @token_required
-def transactionHistory():
+def transactionHistoryPaged():
     """
     Get DANA Transaction History
     Params: page, pageSize
