@@ -13,14 +13,20 @@ class BaseModel:
     def conn(self):
         """Lazy database connection - hanya connect saat dibutuhkan, dan reconnect jika closed"""
         try:
-            # Check if connection exists and is open (0 means open)
+            # Check if connection exists and is open
+            # closed: 0 = valid, > 0 = closed/error
             if self._conn is None or self._conn.closed != 0:
                 print(f"[DB] Reconnecting... (Old Status: {self._conn.closed if self._conn else 'None'})")
                 self._conn = db.getConnection()
         except Exception as e:
             # Force reconnect on error checking status
             print(f"[DB] Connection check failed: {e}. Reconnecting...")
-            self._conn = db.getConnection()
+            self._conn = None # Reset
+            try:
+                self._conn = db.getConnection()
+            except Exception as connectErr:
+                print(f"[DB] Reconnection failed: {connectErr}")
+                raise connectErr
             
         return self._conn
 

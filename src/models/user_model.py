@@ -54,10 +54,21 @@ class UserModel(BaseModel):
         """
         Cari user berdasarkan ID
         """
-        with self.conn.cursor() as cursor:
-            sql = f"SELECT * FROM {self.table_name} WHERE id = %s"
-            cursor.execute(sql, (userId,))
-            return cursor.fetchone()
+        try:
+            with self.conn.cursor() as cursor:
+                sql = f"SELECT * FROM {self.table_name} WHERE id = %s"
+                cursor.execute(sql, (userId,))
+                return cursor.fetchone()
+        except Exception as e:
+            import psycopg2
+            if isinstance(e, psycopg2.OperationalError) or "closed" in str(e):
+                print(f"[DB] OperationalError in findById: {e}. Retrying...")
+                self.close() # Reset connection
+                with self.conn.cursor() as cursor: # Get fresh connection
+                    cursor.execute(sql, (userId,))
+                    return cursor.fetchone()
+            else:
+                raise e
 
     def findByEmail(self, email):
         """
