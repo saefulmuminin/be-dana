@@ -241,6 +241,11 @@ def main():
             cursor.execute("SELECT id FROM adm_campaign WHERE id = %s", (campaign_id,))
             exists = cursor.fetchone()
 
+            # Truncate fields to fit schema limits
+            name = camp['judul'][:100]
+            url_gambar = camp['url_gambar'][:100] if camp['url_gambar'] else None
+            kategori = camp['kategori'][:150]
+
             if exists:
                 # Update
                 cursor.execute("""
@@ -258,19 +263,20 @@ def main():
                         informasi = %s,
                         is_active = 'Y',
                         is_delete = 'N',
+                        status = 'publish',
                         updated_date = NOW()
                     WHERE id = %s
                 """, (
                     kode_institusi,
                     camp['tipe_zakat'],
-                    camp['kategori'],
-                    camp['judul'],
+                    kategori,
+                    name,
                     slug,
                     target,
                     parse_date(camp['start_date']),
                     parse_date(camp['end_date']),
                     donasi,
-                    camp['url_gambar'],
+                    url_gambar,
                     camp['abstract'],
                     campaign_id
                 ))
@@ -282,25 +288,25 @@ def main():
                         id, kode_institusi, tipe, program_id, kategori, name, slug,
                         target_donasi, start_date, end_date, donasi, url_fotoutama,
                         informasi, campaign_latitude, campaign_longitude,
-                        is_active, is_delete, program_pilihan, prioritas, created_date
+                        is_active, is_delete, program_pilihan, prioritas, status, created_date
                     ) VALUES (
                         %s, %s, %s, 1, %s, %s, %s,
                         %s, %s, %s, %s, %s,
                         %s, '0', '0',
-                        'Y', 'N', 'N', 'N', %s
+                        'Y', 'N', 'N', 'N', 'publish', %s
                     )
                 """, (
                     campaign_id,
                     kode_institusi,
                     camp['tipe_zakat'],
-                    camp['kategori'],
-                    camp['judul'],
+                    kategori,
+                    name,
                     slug,
                     target,
                     parse_date(camp['start_date']),
                     parse_date(camp['end_date']),
                     donasi,
-                    camp['url_gambar'],
+                    url_gambar,
                     camp['abstract'],
                     parse_datetime(camp['created_date'])
                 ))
