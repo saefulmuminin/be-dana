@@ -275,6 +275,37 @@ def transactionDetail(refNo):
     return danaPaymentService.transactionDetail(userId, refNo)
 
 
+@dana_bp.route('/simulate-webhook/<orderId>', methods=['GET'])
+def simulateWebhook(orderId):
+    """
+    Simulate DANA Webhook (Success) for Local Development
+    """
+    print(f"[SIMULATION] Simulating webhook for order: {orderId}")
+    
+    # Construct mock success payload
+    payload = {
+        "merchantTransId": orderId,
+        "finishedTime": "2026-02-16T12:00:00+07:00",
+        "status": "SUCCESS",
+        "amount": {
+            "value": "10000.00",
+            "currency": "IDR"
+        },
+        "referenceNo": f"DANA-SIM-{orderId}",
+        "partnerReferenceNo": f"PARTNER-SIM-{orderId}"
+    }
+    
+    # Call webhook handler
+    # Signature None is handled by logging only in current impl
+    result = danaPaymentService.webhook(payload, signature="SIMULATION-SIGNATURE", headers={})
+    
+    return {
+        "status": "success",
+        "message": "Webhook simulation triggered",
+        "data": result
+    }, 200
+
+
 @dana_bp.route('/webhook', methods=['POST'])
 def webhook():
     """
