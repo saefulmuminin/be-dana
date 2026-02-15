@@ -1453,8 +1453,8 @@ class DanaPaymentService:
             if userId:
                 # Check based on created_by user_{id} or email/phone match if needed
                 # Simplest is created_by = 'user_{userId}'
-                sql += " AND (d.created_by = %s OR d.user_id = %s)"
-                params.extend([f"user_{userId}", userId])
+                sql += " AND d.created_by = %s"
+                params.append(f"user_{userId}")
             
             # Filter by Month/Year
             if month:
