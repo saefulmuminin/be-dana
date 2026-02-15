@@ -488,13 +488,14 @@ def campaignIndex():
         sort: "terbaru"  // optional
     }
     """
-    return campaignService.getCampaigns(request.json or {})
+    data = request.get_json(silent=True) or request.form
+    return campaignService.getCampaigns(data)
 
 
 @campaign_bp.route('/kegiatan/search', methods=['POST'])
 def campaignSearch():
     """
-    Search campaign berdasarkan keyword
+    Search kegiatan
     
     Body: {
         keyword: "zakat",
@@ -502,25 +503,27 @@ def campaignSearch():
         offset: 0
     }
     """
-    return campaignService.searchCampaigns(request.json or {})
+    data = request.get_json(silent=True) or request.form
+    return campaignService.searchCampaigns(data)
 
 
 @campaign_bp.route('/kegiatan/detail', methods=['POST'])
 def campaignDetail():
     """
-    Detail campaign beserta list muzaki
+    Detail kegiatan
     
     Body: {
         id: "1"
     }
     """
-    return campaignService.getCampaignDetail(request.json or {})
+    data = request.get_json(silent=True) or request.form
+    return campaignService.getCampaignDetail(data)
 
 
 @campaign_bp.route('/listfilter/byinstitusi', methods=['POST'])
 def filterByInstitution():
     """
-    List institusi untuk filter
+    Filter institusi
     """
     return campaignService.getInstitutions()
 
@@ -528,7 +531,7 @@ def filterByInstitution():
 @campaign_bp.route('/listfilter/bycategory', methods=['POST'])
 def filterByCategory():
     """
-    List kategori untuk filter
+    Filter kategori
     """
     return campaignService.getCategories()
 
@@ -538,9 +541,10 @@ def filterByCategory():
 # =============================================================================
 
 @campaign_bp.route('/banner/index', methods=['POST'])
-def bannerIndex():
+def bannerList():
     """
-    List banner untuk hero section
+    List banner
+    TODO: Implement BannerService if needed, for now mock response
     """
     # TODO: Implement banner service jika ada tabel banner
     return {
@@ -551,9 +555,10 @@ def bannerIndex():
 
 
 @campaign_bp.route('/faq/index', methods=['POST'])
-def faqIndex():
+def faqList():
     """
     List FAQ
+    TODO: Implement FaqService
     """
     # TODO: Implement FAQ service jika ada tabel FAQ
     return {
@@ -564,9 +569,9 @@ def faqIndex():
 
 
 @campaign_bp.route('/tentang/index', methods=['POST'])
-def tentangIndex():
+def tentangKami():
     """
-    Informasi tentang organisasi
+    Tentang Kami
     """
     # TODO: Implement tentang service
     return {
@@ -582,7 +587,7 @@ def tentangIndex():
 @campaign_bp.route('/tentang/syaratketentuan', methods=['POST'])
 def syaratKetentuan():
     """
-    Syarat dan ketentuan
+    Syarat & Ketentuan
     """
     # TODO: Implement syarat ketentuan service
     return {
@@ -598,7 +603,7 @@ def syaratKetentuan():
 @campaign_bp.route('/contact/index', methods=['POST'])
 def contactIndex():
     """
-    Informasi kontak
+    Contact Info
     """
     # TODO: Implement contact service
     return {
@@ -615,7 +620,7 @@ def contactIndex():
 @campaign_bp.route('/sendmessage', methods=['POST'])
 def sendMessage():
     """
-    Kirim pesan/kontak
+    Send Message
     
     Body: {
         name: "Nama",
@@ -624,7 +629,7 @@ def sendMessage():
     }
     """
     # TODO: Implement send message service
-    data = request.json or {}
+    data = request.get_json(silent=True) or request.form
     return {
         'code': 200,
         'message': 'Pesan berhasil dikirim',
