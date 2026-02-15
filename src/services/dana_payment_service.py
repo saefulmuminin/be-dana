@@ -1217,24 +1217,29 @@ class DanaPaymentService:
             transaction = None
 
             # Query with JOIN to get campaign and institution info
-            with logModel.conn.cursor() as cursor:
-                cursor.execute(f"""
-                    SELECT
-                        t.*,
-                        d.campaign_id,
-                        c.name as campaign_name,
-                        c.kategori as campaign_kategori,
-                        k.name as institution_name,
-                        k.kode_institusi
-                    FROM {logModel.table_name} t
-                    LEFT JOIN adm_campaign_donasi d ON t.order_id = d.order_id
-                    LEFT JOIN adm_campaign c ON d.campaign_id = c.id
-                    LEFT JOIN ref_kantor k ON c.kode_institusi = k.id
-                    WHERE t.dana_reference_no = %s OR t.order_id = %s
-                    ORDER BY t.webhook_received_at DESC
-                    LIMIT 1
-                """, (refNo, refNo))
-                transaction = cursor.fetchone()
+            # Query with JOIN to get campaign and institution info
+            try:
+                with logModel.conn.cursor() as cursor:
+                    cursor.execute(f"""
+                        SELECT
+                            t.*,
+                            d.campaign_id,
+                            c.name as campaign_name,
+                            c.kategori as campaign_kategori,
+                            k.name as institution_name,
+                            k.kode_institusi
+                        FROM {logModel.table_name} t
+                        LEFT JOIN adm_campaign_donasi d ON t.order_id = d.order_id
+                        LEFT JOIN adm_campaign c ON d.campaign_id = c.id
+                        LEFT JOIN ref_kantor k ON c.kode_institusi = k.id
+                        WHERE t.dana_reference_no = %s OR t.order_id = %s
+                        ORDER BY t.webhook_received_at DESC
+                        LIMIT 1
+                    """, (refNo, refNo))
+                    transaction = cursor.fetchone()
+            except Exception as e:
+                print(f"[DETAIL] Failed to query log table: {str(e)}")
+                transaction = None
 
             # Fallback: Query adm_campaign_donasi directly if not found in log
             if not transaction:
