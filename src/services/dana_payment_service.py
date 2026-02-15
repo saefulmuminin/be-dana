@@ -692,10 +692,18 @@ class DanaPaymentService:
             # Generate unique X-EXTERNAL-ID
             externalId = f"EXT-QUERY-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
 
+            # Get donation to find correct references
+            donation = self.donationModel.findByOrderId(orderId)
+            partnerRef = orderId
+            danaRef = None
+            if donation:
+                partnerRef = donation.get('partner_reference_no') or orderId
+                danaRef = donation.get('dana_reference_no')
+
             # Request Body
             requestBody = {
                 "merchantId": Config.DANA_MERCHANT_ID,
-                "originalPartnerReferenceNo": orderId,
+                "originalPartnerReferenceNo": partnerRef,
                 "serviceCode": "51", # Default to 51 (Direct Debit)
                 "amount": {
                    "value": "0.00", # Value is ignored for query usually, but required by schema?
@@ -703,6 +711,8 @@ class DanaPaymentService:
                 },
                 "additionalInfo": {}
             }
+            if danaRef:
+                requestBody['originalReferenceNo'] = danaRef
 
             # Generate signature
             signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
@@ -1587,6 +1597,7 @@ class DanaPaymentService:
 
         statusMap = {
             'SUCCESS': 'berhasil',
+            '00': 'berhasil',
             'PAID': 'berhasil',
             'COMPLETED': 'berhasil',
             '00': 'berhasil',  # Finish Notify Success Code
