@@ -1262,9 +1262,9 @@ class DanaPaymentService:
                         FROM adm_campaign_donasi d
                         LEFT JOIN adm_campaign c ON d.campaign_id = c.id
                         LEFT JOIN ref_kantor k ON c.kode_institusi = k.id
-                        WHERE d.dana_reference_no = %s OR d.order_id = %s
+                        WHERE d.dana_reference_no = %s OR d.order_id = %s OR d.partner_reference_no = %s
                         LIMIT 1
-                    """, (refNo, refNo))
+                    """, (refNo, refNo, refNo))
                     transaction = cursor.fetchone()
             if not transaction:
                 print(f"[DETAIL] Transaction not found in local DB")
