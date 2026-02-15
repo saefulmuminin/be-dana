@@ -281,6 +281,8 @@ class CampaignService:
                 'id': str(campaign.get('id')),
                 'judul': campaign.get('name', ''),
                 'url_gambar': campaign.get('url_fotoutama', ''),
+                'total_terkumpul': str(total_terkumpul),
+                'total_kebutuhan': str(target_donasi),
                 'operasional_terkumpul': str(operasional_terkumpul),
                 'operasional_kebutuhan': str(biayaoperasional),
                 'tipe_zakat': campaign.get('tipe', ''),
