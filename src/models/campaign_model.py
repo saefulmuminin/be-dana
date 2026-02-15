@@ -6,10 +6,16 @@ class CampaignModel(BaseModel):
     """
     Model untuk tabel adm_campaign
     Digunakan untuk mengelola campaign/program zakat dan infak
+    
+    Schema columns:
+    - id, kode_institusi, tipe, program_id, kategori
+    - name, slug, target_donasi, start_date, end_date
+    - prosen_biayaoperasional, biayaoperasional, donasi
+    - url_fotoutama, informasi, status, prioritas
     """
     table_name = "adm_campaign"
 
-    def findAll(self, limit=20, offset=0, tipe=None, institusi=None, kategori=None, sort='terbaru'):
+    def findAll(self, limit=20, offset=0, tipe=None, kategori=None, sort='terbaru'):
         """
         Ambil semua campaign aktif dengan filter dan sorting
         
@@ -17,7 +23,6 @@ class CampaignModel(BaseModel):
             limit: Jumlah data per halaman
             offset: Offset untuk pagination
             tipe: Filter berdasarkan tipe (zakat/infak)
-            institusi: Filter berdasarkan nama institusi
             kategori: Filter berdasarkan kategori
             sort: Sorting (terbaru/terlama/terkumpul)
         """
@@ -29,7 +34,10 @@ class CampaignModel(BaseModel):
                     COALESCE(SUM(CASE WHEN d.status = 'berhasil' THEN d.nominal ELSE 0 END), 0) as total_terkumpul,
                     COALESCE(SUM(CASE WHEN d.status = 'berhasil' THEN d.biayaoperasional ELSE 0 END), 0) as operasional_terkumpul,
                     COUNT(CASE WHEN d.status = 'berhasil' THEN 1 END) as jumlah_muzaki,
-                    DATEDIFF(c.tgl_selesai, NOW()) as sisa_hari
+                    CASE 
+                        WHEN c.end_date IS NOT NULL THEN EXTRACT(DAY FROM (c.end_date - CURRENT_DATE))
+                        ELSE NULL 
+                    END as sisa_hari
                 FROM {self.table_name} c
                 LEFT JOIN adm_campaign_donasi d ON c.id = d.campaign_id AND d.is_delete = 'N'
                 WHERE c.is_active = 'Y' AND c.is_delete = 'N' AND c.status = 'publish'
@@ -41,11 +49,6 @@ class CampaignModel(BaseModel):
             if tipe:
                 sql += " AND c.tipe = %s"
                 params.append(tipe)
-            
-            # Filter berdasarkan institusi
-            if institusi and institusi != 'Semua Institusi':
-                sql += " AND c.nama_lembaga = %s"
-                params.append(institusi)
             
             # Filter berdasarkan kategori
             if kategori and kategori != 'Semua':
@@ -61,7 +64,7 @@ class CampaignModel(BaseModel):
             elif sort == 'terkumpul':
                 sql += " ORDER BY total_terkumpul ASC"
             else:  # terbaru (default)
-                sql += " ORDER BY c.prioritas DESC, c.created_date DESC"
+                sql += " ORDER BY CASE WHEN c.prioritas = 'Y' THEN 0 ELSE 1 END, c.created_date DESC"
             
             # Pagination
             sql += " LIMIT %s OFFSET %s"
@@ -73,7 +76,7 @@ class CampaignModel(BaseModel):
     def search(self, keyword, limit=20, offset=0):
         """
         Search campaign berdasarkan keyword
-        Mencari di judul, deskripsi, kategori, dan nama lembaga
+        Mencari di name, informasi, dan kategori
         """
         with self.conn.cursor() as cursor:
             sql = f"""
@@ -82,25 +85,27 @@ class CampaignModel(BaseModel):
                     COALESCE(SUM(CASE WHEN d.status = 'berhasil' THEN d.nominal ELSE 0 END), 0) as total_terkumpul,
                     COALESCE(SUM(CASE WHEN d.status = 'berhasil' THEN d.biayaoperasional ELSE 0 END), 0) as operasional_terkumpul,
                     COUNT(CASE WHEN d.status = 'berhasil' THEN 1 END) as jumlah_muzaki,
-                    DATEDIFF(c.tgl_selesai, NOW()) as sisa_hari
+                    CASE 
+                        WHEN c.end_date IS NOT NULL THEN EXTRACT(DAY FROM (c.end_date - CURRENT_DATE))
+                        ELSE NULL 
+                    END as sisa_hari
                 FROM {self.table_name} c
                 LEFT JOIN adm_campaign_donasi d ON c.id = d.campaign_id AND d.is_delete = 'N'
                 WHERE c.is_active = 'Y' AND c.is_delete = 'N' AND c.status = 'publish'
                 AND (
-                    c.judul LIKE %s OR 
-                    c.deskripsi LIKE %s OR 
-                    c.kategori LIKE %s OR 
-                    c.nama_lembaga LIKE %s OR
-                    c.tipe LIKE %s
+                    c.name ILIKE %s OR 
+                    c.informasi ILIKE %s OR 
+                    c.kategori ILIKE %s OR
+                    c.tipe::text ILIKE %s
                 )
                 GROUP BY c.id
-                ORDER BY c.prioritas DESC, c.created_date DESC
+                ORDER BY CASE WHEN c.prioritas = 'Y' THEN 0 ELSE 1 END, c.created_date DESC
                 LIMIT %s OFFSET %s
             """
             
             search_pattern = f"%{keyword}%"
             cursor.execute(sql, (search_pattern, search_pattern, search_pattern, 
-                                search_pattern, search_pattern, limit, offset))
+                                search_pattern, limit, offset))
             return cursor.fetchall()
 
     def findById(self, campaign_id):
@@ -116,7 +121,10 @@ class CampaignModel(BaseModel):
                     COALESCE(SUM(CASE WHEN d.status = 'berhasil' THEN d.nominal ELSE 0 END), 0) as total_terkumpul,
                     COALESCE(SUM(CASE WHEN d.status = 'berhasil' THEN d.biayaoperasional ELSE 0 END), 0) as operasional_terkumpul,
                     COUNT(CASE WHEN d.status = 'berhasil' THEN 1 END) as jumlah_muzaki,
-                    DATEDIFF(c.tgl_selesai, NOW()) as sisa_hari
+                    CASE 
+                        WHEN c.end_date IS NOT NULL THEN EXTRACT(DAY FROM (c.end_date - CURRENT_DATE))
+                        ELSE NULL 
+                    END as sisa_hari
                 FROM {self.table_name} c
                 LEFT JOIN adm_campaign_donasi d ON c.id = d.campaign_id AND d.is_delete = 'N'
                 WHERE c.id = %s AND c.is_delete = 'N'
@@ -148,20 +156,6 @@ class CampaignModel(BaseModel):
             
             campaign['list_muzaki'] = muzaki_list
             return campaign
-
-    def getInstitutions(self):
-        """
-        Ambil daftar institusi/lembaga unik dari campaign
-        """
-        with self.conn.cursor() as cursor:
-            sql = f"""
-                SELECT DISTINCT nama_lembaga as name
-                FROM {self.table_name}
-                WHERE is_active = 'Y' AND is_delete = 'N' AND nama_lembaga IS NOT NULL
-                ORDER BY nama_lembaga
-            """
-            cursor.execute(sql)
-            return cursor.fetchall()
 
     def getCategories(self):
         """
