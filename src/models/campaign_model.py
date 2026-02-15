@@ -34,9 +34,9 @@ class CampaignModel(BaseModel):
                     COALESCE(SUM(CASE WHEN d.status = 'berhasil' THEN d.nominal ELSE 0 END), 0) as total_terkumpul,
                     COALESCE(SUM(CASE WHEN d.status = 'berhasil' THEN d.biayaoperasional ELSE 0 END), 0) as operasional_terkumpul,
                     COUNT(CASE WHEN d.status = 'berhasil' THEN 1 END) as jumlah_muzaki,
-                    CASE 
-                        WHEN c.end_date IS NOT NULL THEN EXTRACT(DAY FROM (c.end_date - CURRENT_DATE))
-                        ELSE NULL 
+                    CASE
+                        WHEN c.end_date IS NOT NULL THEN EXTRACT(DAY FROM (c.end_date::timestamp - CURRENT_DATE::timestamp))::integer
+                        ELSE NULL
                     END as sisa_hari
                 FROM {self.table_name} c
                 LEFT JOIN adm_campaign_donasi d ON c.id = d.campaign_id AND d.is_delete = 'N'
@@ -85,9 +85,9 @@ class CampaignModel(BaseModel):
                     COALESCE(SUM(CASE WHEN d.status = 'berhasil' THEN d.nominal ELSE 0 END), 0) as total_terkumpul,
                     COALESCE(SUM(CASE WHEN d.status = 'berhasil' THEN d.biayaoperasional ELSE 0 END), 0) as operasional_terkumpul,
                     COUNT(CASE WHEN d.status = 'berhasil' THEN 1 END) as jumlah_muzaki,
-                    CASE 
-                        WHEN c.end_date IS NOT NULL THEN EXTRACT(DAY FROM (c.end_date - CURRENT_DATE))
-                        ELSE NULL 
+                    CASE
+                        WHEN c.end_date IS NOT NULL THEN EXTRACT(DAY FROM (c.end_date::timestamp - CURRENT_DATE::timestamp))::integer
+                        ELSE NULL
                     END as sisa_hari
                 FROM {self.table_name} c
                 LEFT JOIN adm_campaign_donasi d ON c.id = d.campaign_id AND d.is_delete = 'N'
@@ -121,9 +121,9 @@ class CampaignModel(BaseModel):
                     COALESCE(SUM(CASE WHEN d.status = 'berhasil' THEN d.nominal ELSE 0 END), 0) as total_terkumpul,
                     COALESCE(SUM(CASE WHEN d.status = 'berhasil' THEN d.biayaoperasional ELSE 0 END), 0) as operasional_terkumpul,
                     COUNT(CASE WHEN d.status = 'berhasil' THEN 1 END) as jumlah_muzaki,
-                    CASE 
-                        WHEN c.end_date IS NOT NULL THEN EXTRACT(DAY FROM (c.end_date - CURRENT_DATE))
-                        ELSE NULL 
+                    CASE
+                        WHEN c.end_date IS NOT NULL THEN EXTRACT(DAY FROM (c.end_date::timestamp - CURRENT_DATE::timestamp))::integer
+                        ELSE NULL
                     END as sisa_hari
                 FROM {self.table_name} c
                 LEFT JOIN adm_campaign_donasi d ON c.id = d.campaign_id AND d.is_delete = 'N'

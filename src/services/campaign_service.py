@@ -12,7 +12,7 @@ class CampaignService:
     def getCampaigns(self, data):
         """
         Ambil daftar campaign dengan filter dan pagination
-        
+
         Request body:
         {
             "limit": 20,
@@ -23,12 +23,16 @@ class CampaignService:
         }
         """
         try:
+            print(f"[CampaignService] getCampaigns called with data: {data}")
+
             limit = int(data.get('limit', 20))
             offset = int(data.get('offset', 0))
             tipe = data.get('tipe')
             kategori = data.get('kategori')
             sort = data.get('sort', 'terbaru')
-            
+
+            print(f"[CampaignService] Fetching campaigns: limit={limit}, offset={offset}, tipe={tipe}, kategori={kategori}, sort={sort}")
+
             campaigns = self.campaignModel.findAll(
                 limit=limit,
                 offset=offset,
@@ -36,6 +40,8 @@ class CampaignService:
                 kategori=kategori,
                 sort=sort
             )
+
+            print(f"[CampaignService] Found {len(campaigns)} campaigns")
             
             # Format response sesuai external API
             results = []
