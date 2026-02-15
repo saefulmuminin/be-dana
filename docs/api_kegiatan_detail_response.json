@@ -1,0 +1,43 @@
+{
+  "code": 200,
+  "message": "sukses",
+  "results": {
+    "id": "84",
+    "judul": "Zakat Fitrah",
+    "tipe_zakat": "zakat",
+    "kategori": "Lainnya",
+    "url_gambar": "https://amil.cintazakat.id/uploads/campaign/Zakat_Fitrah1.jpg",
+    "total_terkumpul": "0",
+    "total_kebutuhan": "1000000000",
+    "batas_waktu": "18250",
+    "created_date": "",
+    "start_date": "2026-02-04",
+    "end_date": "9999-12-31",
+    "abstract": "Zakat fitrah adalah kebiasaan baik yang telah Allah SWT wajibkan kepada kaum muslimin selama di bulan Ramadhan.",
+    "informasi": "Zakat fitrah adalah kebiasaan baik yang telah Allah SWT wajibkan kepada kaum muslimin selama di bulan Ramadhan. Zakat fitrah wajib ditunaikan oleh setiap Muslim yang mampu untuk mensucikan diri dari perbuatan sia-sia dan perkataan keji selama bulan Ramadhan, sekaligus untuk memberi makan orang-orang miskin.\n\nWaktu pembayaran zakat fitrah yang paling utama adalah sebelum shalat Idul Fitri. Zakat fitrah diwajibkan kepada setiap jiwa Muslim yang mampu, baik laki-laki maupun perempuan, dewasa maupun anak-anak.\n\nBesaran zakat fitrah adalah 2.5 kg atau 3.5 liter beras per jiwa, atau dapat diganti dengan uang senilai harga beras tersebut.",
+    "sisa_hari": "Selamanya",
+    "nama_lembaga": "BAZNAS RI (Pusat)",
+    "kode_institusi": 3171100,
+    "apikey": "",
+    "list_muzaki": [
+      {
+        "nama_muzaki": "Ahmad Hidayat",
+        "total_zakat": "50000",
+        "tgl_donasi": "2026-02-10 08:30:15",
+        "doa_muzaki": "Semoga Allah memberikan keberkahan dan pahala berlimpah"
+      },
+      {
+        "nama_muzaki": "Hamba Allah",
+        "total_zakat": "100000",
+        "tgl_donasi": "2026-02-09 14:20:30",
+        "doa_muzaki": ""
+      },
+      {
+        "nama_muzaki": "Siti Nurhaliza",
+        "total_zakat": "75000",
+        "tgl_donasi": "2026-02-08 19:45:00",
+        "doa_muzaki": "Ya Allah, terimalah zakat kami dan berkahilah harta kami"
+      }
+    ]
+  }
+}
