@@ -1414,23 +1414,42 @@ class DanaPaymentService:
 
             print(f"[WEBHOOK] Donation found: {donation.get('order_id')}, Current status: {donation.get('status')}")
 
-            # Update database dengan DANA status langsung
-            # updateDanaStatusRef akan melakukan mapping sendiri
+            # Update Database Status
             try:
-                # Normalize status untuk database function
+                # Normalize status
                 normalizedStatus = status.upper() if status else 'PENDING'
                 print(f"[WEBHOOK] Updating donation status to: {normalizedStatus}")
+                
+                # Update donation table (adm_campaign_donasi)
                 self.donationModel.updateDanaStatusRef(
                     donation['order_id'],
                     danaRef,
                     normalizedStatus
                 )
+                
+                # Update log_dana_transaction table (so History page updates)
+                logModel = LogDanaTransactionModel()
+                logModel.updateStatus(
+                    orderId, 
+                    normalizedStatus, 
+                    data.get('transactionStatusDesc', 'Updated from webhook'),
+                    datetime.now() if normalizedStatus in ['SUCCESS', '00', 'PAID'] else None,
+                    datetime.now() if normalizedStatus in ['SUCCESS', '00', 'PAID'] else None
+                )
+                print(f"[WEBHOOK] Synced status to log_dana_transaction: {normalizedStatus}")
+
+                # Sync to SIMBA if success
+                is_success = normalizedStatus in ['SUCCESS', '00', 'PAID'] 
+                if is_success:
+                    print(f"[WEBHOOK] ✅ Triggering SIMBA sync for order: {donation['order_id']}")
+                    self._syncToSimba(donation)
+                else:
+                     print(f"[WEBHOOK] Status {normalizedStatus} is not success, skipping SIMBA sync")      
+
             except Exception as dbErr:
                 print(f"DB update failed: {str(dbErr)}")
-
-            # Map DANA status ke internal status untuk sync ke SIMBA
-            internalStatus = self._mapDanaStatus(status)
-            print(f"[WEBHOOK] DANA status '{status}' mapped to internal status: '{internalStatus}'")
+                import traceback
+                traceback.print_exc()
 
             # Log transaction to log_dana_transaction table
             try:
