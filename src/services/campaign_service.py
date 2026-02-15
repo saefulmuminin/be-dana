@@ -42,36 +42,54 @@ class CampaignService:
             )
 
             print(f"[CampaignService] Found {len(campaigns)} campaigns")
-            
-            # Format response sesuai external API
+
+            # Format response sesuai cintazakat.id API
             results = []
             for campaign in campaigns:
                 total_terkumpul = int(campaign.get('total_terkumpul', 0))
                 target_donasi = int(campaign.get('target_donasi', 0))
                 operasional_terkumpul = int(campaign.get('operasional_terkumpul', 0))
                 biayaoperasional = int(campaign.get('biayaoperasional', 0))
-                
+
+                # Format sisa_hari
+                sisa_hari_value = campaign.get('sisa_hari')
+                if sisa_hari_value is None or sisa_hari_value > 10000:
+                    sisa_hari_display = "Selamanya"
+                    batas_waktu = "18250"
+                else:
+                    sisa_hari_display = str(int(sisa_hari_value))
+                    batas_waktu = str(int(sisa_hari_value))
+
+                # Format dates
+                created_date = campaign.get('created_date')
+                start_date = campaign.get('start_date')
+                end_date = campaign.get('end_date')
+
                 results.append({
                     'id': str(campaign.get('id')),
-                    'judul': campaign.get('name', ''),  # name -> judul
-                    'slug': campaign.get('slug', ''),
-                    'deskripsi': campaign.get('informasi', '')[:200] if campaign.get('informasi') else '',  # Short description
-                    'url_gambar': campaign.get('url_fotoutama', ''),
-                    'nama_lembaga': '',  # Not in schema, leave empty
+                    'judul': campaign.get('name', ''),
+                    'tipe_zakat': campaign.get('tipe', ''),
                     'kategori': campaign.get('kategori', ''),
-                    'tipe': campaign.get('tipe', ''),
+                    'url_gambar': campaign.get('url_fotoutama', ''),
                     'total_terkumpul': str(total_terkumpul),
-                    'total_kebutuhan': str(target_donasi),  # target_donasi -> total_kebutuhan
-                    'operasional_terkumpul': str(operasional_terkumpul),
-                    'operasional_kebutuhan': str(biayaoperasional),  # biayaoperasional -> operasional_kebutuhan
-                    'sisa_hari': int(campaign.get('sisa_hari', 0)) if campaign.get('sisa_hari') else 0,
-                    'created_date': campaign.get('created_date').isoformat() if campaign.get('created_date') else '',
-                    'jumlah_muzaki': campaign.get('jumlah_muzaki', 0)
+                    'total_kebutuhan': str(target_donasi),
+                    'batas_waktu': batas_waktu,
+                    'created_date': created_date.strftime('%Y-%m-%d %H:%M:%S') if created_date else '',
+                    'start_date': start_date.strftime('%Y-%m-%d') if start_date else '',
+                    'end_date': end_date.strftime('%Y-%m-%d') if end_date else '',
+                    'abstract': (campaign.get('informasi', '') or '')[:200],
+                    'sisa_hari': sisa_hari_display,
+                    'nama_lembaga': 'BAZNAS RI (Pusat)',  # Default value
+                    'kode_institusi': campaign.get('kode_institusi', ''),
+                    'apikey': ''  # Empty for security
                 })
-            
+
             return {
                 'code': 200,
-                'message': 'Success',
+                'message': 'sukses',
+                'count': len(campaigns),
+                'offset': offset,
+                'limit': str(limit),
                 'results': results
             }, 200
             
@@ -105,36 +123,52 @@ class CampaignService:
                 return self.getCampaigns(data)
             
             campaigns = self.campaignModel.search(keyword, limit, offset)
-            
-            # Format response
+
+            # Format response sesuai cintazakat.id API
             results = []
             for campaign in campaigns:
                 total_terkumpul = int(campaign.get('total_terkumpul', 0))
                 target_donasi = int(campaign.get('target_donasi', 0))
-                operasional_terkumpul = int(campaign.get('operasional_terkumpul', 0))
-                biayaoperasional = int(campaign.get('biayaoperasional', 0))
-                
+
+                # Format sisa_hari
+                sisa_hari_value = campaign.get('sisa_hari')
+                if sisa_hari_value is None or sisa_hari_value > 10000:
+                    sisa_hari_display = "Selamanya"
+                    batas_waktu = "18250"
+                else:
+                    sisa_hari_display = str(int(sisa_hari_value))
+                    batas_waktu = str(int(sisa_hari_value))
+
+                # Format dates
+                created_date = campaign.get('created_date')
+                start_date = campaign.get('start_date')
+                end_date = campaign.get('end_date')
+
                 results.append({
                     'id': str(campaign.get('id')),
                     'judul': campaign.get('name', ''),
-                    'slug': campaign.get('slug', ''),
-                    'deskripsi': campaign.get('informasi', '')[:200] if campaign.get('informasi') else '',
-                    'url_gambar': campaign.get('url_fotoutama', ''),
-                    'nama_lembaga': '',
+                    'tipe_zakat': campaign.get('tipe', ''),
                     'kategori': campaign.get('kategori', ''),
-                    'tipe': campaign.get('tipe', ''),
+                    'url_gambar': campaign.get('url_fotoutama', ''),
                     'total_terkumpul': str(total_terkumpul),
                     'total_kebutuhan': str(target_donasi),
-                    'operasional_terkumpul': str(operasional_terkumpul),
-                    'operasional_kebutuhan': str(biayaoperasional),
-                    'sisa_hari': int(campaign.get('sisa_hari', 0)) if campaign.get('sisa_hari') else 0,
-                    'created_date': campaign.get('created_date').isoformat() if campaign.get('created_date') else '',
-                    'jumlah_muzaki': campaign.get('jumlah_muzaki', 0)
+                    'batas_waktu': batas_waktu,
+                    'created_date': created_date.strftime('%Y-%m-%d %H:%M:%S') if created_date else '',
+                    'start_date': start_date.strftime('%Y-%m-%d') if start_date else '',
+                    'end_date': end_date.strftime('%Y-%m-%d') if end_date else '',
+                    'abstract': (campaign.get('informasi', '') or '')[:200],
+                    'sisa_hari': sisa_hari_display,
+                    'nama_lembaga': 'BAZNAS RI (Pusat)',
+                    'kode_institusi': campaign.get('kode_institusi', ''),
+                    'apikey': ''
                 })
-            
+
             return {
                 'code': 200,
-                'message': 'Success',
+                'message': 'sukses',
+                'count': len(campaigns),
+                'offset': offset,
+                'limit': str(limit),
                 'results': results
             }, 200
             
@@ -179,42 +213,56 @@ class CampaignService:
             # Format muzaki list
             list_muzaki = []
             for muzaki in campaign.get('list_muzaki', []):
+                tgl_donasi = muzaki.get('tgl_donasi')
                 list_muzaki.append({
                     'nama_muzaki': muzaki.get('nama_muzaki', 'Hamba Allah'),
                     'total_zakat': str(muzaki.get('total_zakat', 0)),
-                    'tgl_donasi': muzaki.get('tgl_donasi').isoformat() if muzaki.get('tgl_donasi') else '',
+                    'tgl_donasi': tgl_donasi.strftime('%Y-%m-%d %H:%M:%S') if tgl_donasi else '',
                     'doa_muzaki': muzaki.get('doa_muzaki', '')
                 })
-            
+
             # Format campaign detail
             total_terkumpul = int(campaign.get('total_terkumpul', 0))
             target_donasi = int(campaign.get('target_donasi', 0))
-            operasional_terkumpul = int(campaign.get('operasional_terkumpul', 0))
-            biayaoperasional = int(campaign.get('biayaoperasional', 0))
-            
+
+            # Format sisa_hari
+            sisa_hari_value = campaign.get('sisa_hari')
+            if sisa_hari_value is None or sisa_hari_value > 10000:
+                sisa_hari_display = "Selamanya"
+                batas_waktu = "18250"
+            else:
+                sisa_hari_display = str(int(sisa_hari_value))
+                batas_waktu = str(int(sisa_hari_value))
+
+            # Format dates
+            created_date = campaign.get('created_date')
+            start_date = campaign.get('start_date')
+            end_date = campaign.get('end_date')
+
             result = {
                 'id': str(campaign.get('id')),
                 'judul': campaign.get('name', ''),
-                'slug': campaign.get('slug', ''),
-                'deskripsi': campaign.get('informasi', '')[:200] if campaign.get('informasi') else '',
-                'informasi': campaign.get('informasi', ''),
-                'url_gambar': campaign.get('url_fotoutama', ''),
-                'nama_lembaga': '',
+                'tipe_zakat': campaign.get('tipe', ''),
                 'kategori': campaign.get('kategori', ''),
-                'tipe': campaign.get('tipe', ''),
+                'url_gambar': campaign.get('url_fotoutama', ''),
                 'total_terkumpul': str(total_terkumpul),
                 'total_kebutuhan': str(target_donasi),
-                'operasional_terkumpul': str(operasional_terkumpul),
-                'operasional_kebutuhan': str(biayaoperasional),
-                'sisa_hari': int(campaign.get('sisa_hari', 0)) if campaign.get('sisa_hari') else 0,
-                'created_date': campaign.get('created_date').isoformat() if campaign.get('created_date') else '',
-                'jumlah_muzaki': campaign.get('jumlah_muzaki', 0),
+                'batas_waktu': batas_waktu,
+                'created_date': created_date.strftime('%Y-%m-%d %H:%M:%S') if created_date else '',
+                'start_date': start_date.strftime('%Y-%m-%d') if start_date else '',
+                'end_date': end_date.strftime('%Y-%m-%d') if end_date else '',
+                'abstract': (campaign.get('informasi', '') or '')[:200],
+                'informasi': campaign.get('informasi', ''),
+                'sisa_hari': sisa_hari_display,
+                'nama_lembaga': 'BAZNAS RI (Pusat)',
+                'kode_institusi': campaign.get('kode_institusi', ''),
+                'apikey': '',
                 'list_muzaki': list_muzaki
             }
-            
+
             return {
                 'code': 200,
-                'message': 'Success',
+                'message': 'sukses',
                 'results': result
             }, 200
             
