@@ -1429,14 +1429,17 @@ class DanaPaymentService:
                 
                 # Update log_dana_transaction table (so History page updates)
                 logModel = LogDanaTransactionModel()
+                # Use donation['order_id'] (DANA-...) not webhook orderId (which could be CINTA-...)
+                correctOrderId = donation['order_id']
+                
                 logModel.updateStatus(
-                    orderId, 
+                    correctOrderId, 
                     normalizedStatus, 
                     data.get('transactionStatusDesc', 'Updated from webhook'),
                     datetime.now() if normalizedStatus in ['SUCCESS', '00', 'PAID'] else None,
                     datetime.now() if normalizedStatus in ['SUCCESS', '00', 'PAID'] else None
                 )
-                print(f"[WEBHOOK] Synced status to log_dana_transaction: {normalizedStatus}")
+                print(f"[WEBHOOK] Synced status to log_dana_transaction: {correctOrderId} -> {normalizedStatus}")
 
                 # Sync to SIMBA if success
                 is_success = normalizedStatus in ['SUCCESS', '00', 'PAID'] 
@@ -1456,11 +1459,22 @@ class DanaPaymentService:
                 logModel = LogDanaTransactionModel()
                 
                 # Extract payment info
-                paymentInfo = data.get('additionalInfo', {}).get('paymentInfo', {})
-                payOptionInfos = paymentInfo.get('payOptionInfos', [])
+                additionalInfo = data.get('additionalInfo', {})
+                paymentInfo = additionalInfo.get('paymentInfo', {}) if isinstance(additionalInfo, dict) else {}
+                payOptionInfos = paymentInfo.get('payOptionInfos', []) if isinstance(paymentInfo, dict) else []
                 paymentMethod = payOptionInfos[0].get('payMethod', '') if payOptionInfos else ''
-                paidTime = paymentInfo.get('paidTime', '')
+                paidTime = paymentInfo.get('paidTime', '') if isinstance(paymentInfo, dict) else ''
                 
+                # Extract currency and statusDesc safely
+                currency = 'IDR'
+                if isinstance(data.get('amount'), dict):
+                    currency = data.get('amount', {}).get('currency', 'IDR')
+                
+                statusDesc = data.get('transactionStatusDesc') or \
+                             data.get('statusMessage') or \
+                             data.get('responseMessage') or \
+                             'Webhook received'
+
                 logModel.create({
                     'order_id': donation.get('order_id'),
                     'partner_reference_no': partnerRef,
@@ -1481,13 +1495,8 @@ class DanaPaymentService:
                 })
             except Exception as logErr:
                 print(f"[LOG_DANA] Failed to log webhook transaction: {logErr}")
-
-            # Sync ke SIMBA jika sukses
-            if internalStatus == 'berhasil':
-                print(f"[WEBHOOK] ✅ Triggering SIMBA sync for order: {donation.get('order_id')}")
-                self._syncToSimba(donation)
-            else:
-                print(f"[WEBHOOK] ⏭️ Skipping SIMBA sync - status is not 'berhasil': {internalStatus}")
+                import traceback
+                traceback.print_exc()
 
             # Response sesuai format DANA SNAP API
             return {
