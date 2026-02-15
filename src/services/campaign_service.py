@@ -185,45 +185,76 @@ class CampaignService:
     def getCampaignDetail(self, data):
         """
         Ambil detail campaign beserta list muzaki
-        
+
         Request body:
         {
             "id": "1"
         }
         """
         try:
+            from datetime import datetime, timezone
+
             campaign_id = data.get('id')
-            
+
             if not campaign_id:
                 return {
                     'code': 400,
                     'message': 'ID campaign wajib diisi',
                     'results': None
                 }, 400
-            
+
             campaign = self.campaignModel.findById(campaign_id)
-            
+
             if not campaign:
                 return {
                     'code': 404,
                     'message': 'Campaign tidak ditemukan',
                     'results': None
                 }, 404
-            
+
+            # Helper function untuk waktu lalu
+            def get_waktu_lalu(tgl_donasi):
+                if not tgl_donasi:
+                    return ""
+
+                now = datetime.now()
+                if tgl_donasi.tzinfo is None:
+                    diff = now - tgl_donasi
+                else:
+                    diff = datetime.now(timezone.utc) - tgl_donasi
+
+                days = diff.days
+                hours = diff.seconds // 3600
+                minutes = (diff.seconds % 3600) // 60
+
+                if days > 0:
+                    return f"{days} hari yang lalu"
+                elif hours > 0:
+                    return f"{hours} jam yang lalu"
+                elif minutes > 0:
+                    return f"{minutes} menit yang lalu"
+                else:
+                    return "Baru saja"
+
             # Format muzaki list
             list_muzaki = []
             for muzaki in campaign.get('list_muzaki', []):
                 tgl_donasi = muzaki.get('tgl_donasi')
                 list_muzaki.append({
                     'nama_muzaki': muzaki.get('nama_muzaki', 'Hamba Allah'),
+                    'url_gambar_muzaki': '',  # Empty untuk sekarang
                     'total_zakat': str(muzaki.get('total_zakat', 0)),
-                    'tgl_donasi': tgl_donasi.strftime('%Y-%m-%d %H:%M:%S') if tgl_donasi else '',
-                    'doa_muzaki': muzaki.get('doa_muzaki', '')
+                    'tgl_zakat': tgl_donasi.strftime('%Y-%m-%d %H:%M:%S') if tgl_donasi else '',
+                    'doa_muzaki': muzaki.get('doa_muzaki', ''),
+                    'waktu_lalu': get_waktu_lalu(tgl_donasi)
                 })
 
             # Format campaign detail
             total_terkumpul = int(campaign.get('total_terkumpul', 0))
             target_donasi = int(campaign.get('target_donasi', 0))
+            operasional_terkumpul = int(campaign.get('operasional_terkumpul', 0))
+            biayaoperasional = int(campaign.get('biayaoperasional', 0))
+            jumlah_muzaki = int(campaign.get('jumlah_muzaki', 0))
 
             # Format sisa_hari
             sisa_hari_value = campaign.get('sisa_hari')
@@ -237,26 +268,36 @@ class CampaignService:
             # Format dates
             created_date = campaign.get('created_date')
             start_date = campaign.get('start_date')
-            end_date = campaign.get('end_date')
+
+            # Generate URL kegiatan
+            slug = campaign.get('slug', '')
+            if not slug:
+                # Generate slug dari name jika tidak ada
+                name = campaign.get('name', '')
+                slug = name.replace(' ', '-')
+            url_kegiatan = f"https://cintazakat.baznas.go.id/kegiatan/detail/{slug}-{campaign_id}"
 
             result = {
                 'id': str(campaign.get('id')),
                 'judul': campaign.get('name', ''),
-                'tipe_zakat': campaign.get('tipe', ''),
-                'kategori': campaign.get('kategori', ''),
                 'url_gambar': campaign.get('url_fotoutama', ''),
-                'total_terkumpul': str(total_terkumpul),
-                'total_kebutuhan': str(target_donasi),
+                'operasional_terkumpul': str(operasional_terkumpul),
+                'operasional_kebutuhan': str(biayaoperasional),
+                'tipe_zakat': campaign.get('tipe', ''),
                 'batas_waktu': batas_waktu,
                 'created_date': created_date.strftime('%Y-%m-%d %H:%M:%S') if created_date else '',
-                'start_date': start_date.strftime('%Y-%m-%d') if start_date else '',
-                'end_date': end_date.strftime('%Y-%m-%d') if end_date else '',
-                'abstract': (campaign.get('informasi', '') or '')[:200],
-                'informasi': campaign.get('informasi', ''),
                 'sisa_hari': sisa_hari_display,
+                'url_kegiatan': url_kegiatan,
+                'informasi': campaign.get('informasi', ''),
+                'tgl_kegiatan': start_date.strftime('%Y-%m-%d') if start_date else '',
+                'email': 'info@baznas.go.id',  # Default email
+                'kode_institusi': str(campaign.get('kode_institusi', '')),
                 'nama_lembaga': 'BAZNAS RI (Pusat)',
-                'kode_institusi': campaign.get('kode_institusi', ''),
-                'apikey': '',
+                'apikey': 'UnpGVVpsSkJZV3NyTTJob1ZYQkdjMk5hYWxsbVNIZHJlVmRPV25CUFpUVkpWVWxGVXpFMmFtbFlZM0oxZUZCQldqSXdkMmxrVHpobmVqY3JUbTVPUlVGTk0wMVpVblZDV0RVNVMzSmpXRVp1ZFU5R2FYSTRkMVpGVkd0cU5XaGxObE4xZGtnd2JXdFhSMmM5',  # Static API key
+                'url_gambar_lembaga': 'https://amil.cintazakat.id/uploads/logobaznas/baznaspusat.jpg',
+                'is_verified': 1,
+                'is_organization': 1,
+                'total_muzaki': jumlah_muzaki,
                 'list_muzaki': list_muzaki
             }
 
@@ -265,7 +306,7 @@ class CampaignService:
                 'message': 'sukses',
                 'results': result
             }, 200
-            
+
         except Exception as e:
             print(f"[CampaignService] Error getCampaignDetail: {str(e)}")
             import traceback

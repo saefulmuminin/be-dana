@@ -138,17 +138,17 @@ class CampaignModel(BaseModel):
             
             # Query list muzaki
             sql_muzaki = """
-                SELECT 
-                    CASE 
+                SELECT
+                    CASE
                         WHEN hamba_allah = 'Y' THEN 'Hamba Allah'
                         ELSE nama_lengkap
                     END as nama_muzaki,
                     nominal as total_zakat,
-                    created_date as tgl_donasi,
+                    COALESCE(tgl_donasi, created_date) as tgl_donasi,
                     doa_muzaki
                 FROM adm_campaign_donasi
                 WHERE campaign_id = %s AND status = 'berhasil' AND is_delete = 'N'
-                ORDER BY created_date DESC
+                ORDER BY COALESCE(tgl_donasi, created_date) DESC
                 LIMIT 100
             """
             cursor.execute(sql_muzaki, (campaign_id,))
