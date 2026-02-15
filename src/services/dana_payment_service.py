@@ -1249,11 +1249,13 @@ class DanaPaymentService:
             if not transaction:
                 print(f"[DETAIL] Not found in log, searching adm_campaign_donasi...")
                 with logModel.conn.cursor() as cursor:
-                    cursor.execute(f"""
+                    cursor.execute("""
                         SELECT 
                             d.order_id, d.partner_reference_no, d.dana_reference_no, d.status, 
-                            d.nominal as amount, d.tgl_donasi as created_time, d.paid_date as paid_time,
-                            d.campaign_id, d.payment_type as payment_method,
+                            d.nominal as amount, d.tgl_donasi as created_time, 
+                            d.dana_paid_at as paid_time,
+                            d.campaign_id, 
+                            'DANA' as payment_method,
                             c.name as campaign_name, c.kategori as campaign_kategori,
                             k.name as institution_name, k.kode_institusi,
                             'adm_campaign_donasi' as source_table
@@ -1264,7 +1266,6 @@ class DanaPaymentService:
                         LIMIT 1
                     """, (refNo, refNo))
                     transaction = cursor.fetchone()
-
             if not transaction:
                 print(f"[DETAIL] Transaction not found in local DB")
                 return Response.error("Transaction not found", 404)
