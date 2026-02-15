@@ -1,5 +1,4 @@
 from src.models.campaign_model import CampaignModel
-from src.utils.db_connection import get_db_connection
 
 
 class CampaignService:
@@ -8,8 +7,7 @@ class CampaignService:
     """
     
     def __init__(self):
-        self.conn = get_db_connection()
-        self.campaignModel = CampaignModel(self.conn)
+        self.campaignModel = CampaignModel()
 
     def getCampaigns(self, data):
         """
