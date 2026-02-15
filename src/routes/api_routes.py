@@ -167,9 +167,9 @@ def applyOtt():
     return danaPaymentService.applyOtt(request.json or {})
 
 
-@dana_bp.route('/history', methods=['GET'])
+@dana_bp.route('/history/filter', methods=['GET'])
 @token_required
-def transactionHistory():
+def transactionHistoryFilter():
     """
     Get transaction history
     Headers: Authorization: Bearer <token>
