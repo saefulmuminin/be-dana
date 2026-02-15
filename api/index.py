@@ -17,12 +17,13 @@ except Exception as e:
 
 # Register blueprints with error handling
 try:
-    from src.routes.api_routes import auth_bp, dana_bp, user_bp, disburse_bp, snap_bp
+    from src.routes.api_routes import auth_bp, dana_bp, user_bp, disburse_bp, snap_bp, campaign_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(dana_bp)
     app.register_blueprint(user_bp)
     app.register_blueprint(disburse_bp)
     app.register_blueprint(snap_bp)
+    app.register_blueprint(campaign_bp)
 
     # Print registered routes for debugging
     print("[API] Successfully registered blueprints. Routes:")
