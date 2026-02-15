@@ -167,11 +167,31 @@ def applyOtt():
     return danaPaymentService.applyOtt(request.json or {})
 
 
-@dana_bp.route('/query-payment/<orderId>', methods=['GET'])
-def queryPayment(orderId):
+@dana_bp.route('/history', methods=['GET'])
+@token_required
+def transactionHistory():
     """
-    Query status pembayaran
+    Get transaction history
+    Headers: Authorization: Bearer <token>
+    Query Params: month, year, status, limit, offset
     """
+    userId = g.current_user.get('user_id')
+    month = request.args.get('month')
+    year = request.args.get('year')
+    status = request.args.get('status')
+    limit = request.args.get('limit', 20)
+    offset = request.args.get('offset', 0)
+
+    return danaPaymentService.getHistory(userId, month, year, status, limit, offset)
+
+
+@dana_bp.route('/status', methods=['POST'])
+def checkTransactionStatus():
+    """
+    Cek status transaksi
+    """
+    data = request.json or {}
+    orderId = data.get('order_id')
     return danaPaymentService.queryPayment(orderId)
 
 

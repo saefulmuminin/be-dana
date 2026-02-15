@@ -1429,6 +1429,112 @@ class DanaPaymentService:
                 "responseMessage": "Successful"
             }, 200
 
+    def getHistory(self, userId=None, month=None, year=None, status=None, limit=20, offset=0):
+        """
+        Get transaction history for Mini App
+        """
+        try:
+            conn = self.db.getConnection()
+            results = []
+            
+            # Build query
+            sql = """
+                SELECT 
+                    d.order_id, d.partner_reference_no, d.status, d.tgl_donasi, d.nominal,
+                    c.name as campaign_name, c.kategori
+                FROM adm_campaign_donasi d
+                LEFT JOIN adm_campaign c ON d.campaign_id = c.id
+                WHERE 1=1
+            """
+            params = []
+            
+            # Filter by User (either user_id or created_by logic)
+            # Prioritize userId if provided (from token)
+            if userId:
+                # Check based on created_by user_{id} or email/phone match if needed
+                # Simplest is created_by = 'user_{userId}'
+                sql += " AND (d.created_by = %s OR d.user_id = %s)"
+                params.extend([f"user_{userId}", userId])
+            
+            # Filter by Month/Year
+            if month:
+                sql += " AND EXTRACT(MONTH FROM d.tgl_donasi) = %s"
+                params.append(month)
+            if year:
+                sql += " AND EXTRACT(YEAR FROM d.tgl_donasi) = %s"
+                params.append(year)
+                
+            # Filter by Status
+            if status:
+                if status.lower() == 'berhasil':
+                    sql += " AND d.status IN ('berhasil', 'settlement', 'capture', 'success')"
+                elif status.lower() == 'pending':
+                    sql += " AND d.status IN ('pending', 'challenge')"
+                elif status.lower() != 'all':
+                    sql += " AND d.status = %s"
+                    params.append(status.lower())
+            
+            # Order and Pagination
+            sql += " ORDER BY d.tgl_donasi DESC LIMIT %s OFFSET %s"
+            params.extend([limit, offset])
+            
+            with conn.cursor() as cursor:
+                cursor.execute(sql, tuple(params))
+                rows = cursor.fetchall()
+                
+                for row in rows:
+                    # Map params
+                    orderId = row.get('order_id')
+                    partnerRef = row.get('partner_reference_no')
+                    trxStatus = row.get('status')
+                    tglDonasi = row.get('tgl_donasi')
+                    nominal = row.get('nominal')
+                    campaignName = row.get('campaign_name')
+                    kategori = row.get('kategori')
+                    
+                    # Format Status for Frontend
+                    statusMap = {
+                        'berhasil': 'SUCCESS',
+                        'pending': 'PENDING',
+                        'gagal': 'FAILED',
+                        'expired': 'EXPIRED'
+                    }
+                    displayStatus = statusMap.get(trxStatus, trxStatus.upper())
+                    
+                    results.append({
+                        "referenceNo": orderId,
+                        "originalReferenceNo": partnerRef,
+                        "merchantId": self.merchantId,
+                        "transactionStatus": displayStatus,
+                        "status": displayStatus,
+                        "transDateTime": tglDonasi.strftime('%Y-%m-%dT%H:%M:%S+07:00') if tglDonasi else '',
+                        "dateTime": tglDonasi.strftime('%Y-%m-%dT%H:%M:%S+07:00') if tglDonasi else '',
+                        "amount": {
+                            "value": str(int(nominal)) if nominal else "0",
+                            "currency": "IDR"
+                        },
+                        "campaignName": campaignName or "Donasi",
+                        "institutionName": "BAZNAS RI (Pusat)",
+                        "remark": campaignName or "Donasi",
+                        "campaignKategori": kategori or "Umum"
+                    })
+            
+            return {
+                "responseCode": "200",
+                "responseMessage": "Success",
+                "detailData": results
+            }
+            
+        except Exception as e:
+            print(f"[History] Error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "responseCode": "500",
+                "responseMessage": f"Internal Error: {str(e)}",
+                "detailData": []
+            }
+
     def _mapDanaStatus(self, danaStatus):
         """Map DANA status ke internal status"""
         if not danaStatus:
