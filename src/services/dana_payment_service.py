@@ -1273,6 +1273,21 @@ class DanaPaymentService:
             print(f"[DETAIL] Found transaction in local DB: {transaction.get('order_id')}")
 
             # Format response similar to DANA API format
+            status_mapping = {
+                'berhasil': 'SUCCESS',
+                'pending': 'PENDING',
+                'gagal': 'FAILED'
+            }
+            db_status = transaction.get('status', '').lower()
+            api_status = status_mapping.get(db_status, db_status.upper())
+            
+            desc_mapping = {
+                'berhasil': 'Pembayaran Berhasil',
+                'pending': 'Menunggu Pembayaran',
+                'gagal': 'Pembayaran Gagal'
+            }
+            status_desc = desc_mapping.get(db_status, 'Status Tidak Diketahui')
+
             formatted_data = {
                 "responseCode": "2001200",
                 "responseMessage": "Success (from local database)",
@@ -1284,8 +1299,8 @@ class DanaPaymentService:
                     "value": str(transaction.get('amount', 0)),
                     "currency": transaction.get('currency', 'IDR')
                 },
-                "transactionStatus": transaction.get('status'),
-                "transactionStatusDesc": transaction.get('status_desc'),
+                "transactionStatus": api_status,
+                "transactionStatusDesc": status_desc,
                 "merchantId": transaction.get('merchant_id'),
                 "paymentMethod": transaction.get('payment_method'),
                 "campaignName": transaction.get('campaign_name'),
