@@ -4,6 +4,7 @@ from src.services.dana_auth_service import DanaAuthService
 from src.services.dana_payment_service import DanaPaymentService
 from src.services.user_service import UserService
 from src.services.health_service import HealthService
+from src.services.campaign_service import CampaignService
 from src.middlewares.auth_middleware import token_required
 
 # Blueprints
@@ -11,6 +12,7 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/api/v1/auth')
 dana_bp = Blueprint('dana', __name__, url_prefix='/api/v1/dana')
 user_bp = Blueprint('user', __name__, url_prefix='/api/v1/user')
 disburse_bp = Blueprint('disburse', __name__, url_prefix='/api/v1/disburse')
+campaign_bp = Blueprint('campaign', __name__, url_prefix='/api/v1')
 
 # SNAP API Blueprint (ASPI-mandated path)
 snap_bp = Blueprint('snap', __name__, url_prefix='/v1.0')
@@ -21,6 +23,7 @@ danaAuthService = DanaAuthService()
 danaPaymentService = DanaPaymentService()
 userService = UserService()
 healthService = HealthService()
+campaignService = CampaignService()
 
 
 # =============================================================================
@@ -465,3 +468,165 @@ def debitStatus():
             "responseCode": "4045401",
             "responseMessage": "Transaction Not Found"
         }, 404
+
+
+# =============================================================================
+# CAMPAIGN ROUTES (Menggantikan external API cintazakat.id)
+# =============================================================================
+
+@campaign_bp.route('/kegiatan/index', methods=['POST'])
+def campaignIndex():
+    """
+    List semua campaign/program
+    
+    Body: {
+        limit: 20,
+        offset: 0,
+        tipe: "zakat",  // optional
+        institusi: "BAZNAS",  // optional
+        kategori: "Pendidikan",  // optional
+        sort: "terbaru"  // optional
+    }
+    """
+    return campaignService.getCampaigns(request.json or {})
+
+
+@campaign_bp.route('/kegiatan/search', methods=['POST'])
+def campaignSearch():
+    """
+    Search campaign berdasarkan keyword
+    
+    Body: {
+        keyword: "zakat",
+        limit: 20,
+        offset: 0
+    }
+    """
+    return campaignService.searchCampaigns(request.json or {})
+
+
+@campaign_bp.route('/kegiatan/detail', methods=['POST'])
+def campaignDetail():
+    """
+    Detail campaign beserta list muzaki
+    
+    Body: {
+        id: "1"
+    }
+    """
+    return campaignService.getCampaignDetail(request.json or {})
+
+
+@campaign_bp.route('/listfilter/byinstitusi', methods=['POST'])
+def filterByInstitution():
+    """
+    List institusi untuk filter
+    """
+    return campaignService.getInstitutions()
+
+
+@campaign_bp.route('/listfilter/bycategory', methods=['POST'])
+def filterByCategory():
+    """
+    List kategori untuk filter
+    """
+    return campaignService.getCategories()
+
+
+# =============================================================================
+# CONTENT ROUTES (Banner, FAQ, Tentang, dll)
+# =============================================================================
+
+@campaign_bp.route('/banner/index', methods=['POST'])
+def bannerIndex():
+    """
+    List banner untuk hero section
+    """
+    # TODO: Implement banner service jika ada tabel banner
+    return {
+        'code': 200,
+        'message': 'Success',
+        'results': []
+    }, 200
+
+
+@campaign_bp.route('/faq/index', methods=['POST'])
+def faqIndex():
+    """
+    List FAQ
+    """
+    # TODO: Implement FAQ service jika ada tabel FAQ
+    return {
+        'code': 200,
+        'message': 'Success',
+        'results': []
+    }, 200
+
+
+@campaign_bp.route('/tentang/index', methods=['POST'])
+def tentangIndex():
+    """
+    Informasi tentang organisasi
+    """
+    # TODO: Implement tentang service
+    return {
+        'code': 200,
+        'message': 'Success',
+        'results': {
+            'judul': 'Tentang Kami',
+            'deskripsi': 'Informasi tentang organisasi'
+        }
+    }, 200
+
+
+@campaign_bp.route('/tentang/syaratketentuan', methods=['POST'])
+def syaratKetentuan():
+    """
+    Syarat dan ketentuan
+    """
+    # TODO: Implement syarat ketentuan service
+    return {
+        'code': 200,
+        'message': 'Success',
+        'results': {
+            'judul': 'Syarat dan Ketentuan',
+            'deskripsi': 'Syarat dan ketentuan penggunaan'
+        }
+    }, 200
+
+
+@campaign_bp.route('/contact/index', methods=['POST'])
+def contactIndex():
+    """
+    Informasi kontak
+    """
+    # TODO: Implement contact service
+    return {
+        'code': 200,
+        'message': 'Success',
+        'results': {
+            'email': 'info@example.com',
+            'phone': '021-12345678',
+            'address': 'Jakarta, Indonesia'
+        }
+    }, 200
+
+
+@campaign_bp.route('/sendmessage', methods=['POST'])
+def sendMessage():
+    """
+    Kirim pesan/kontak
+    
+    Body: {
+        name: "Nama",
+        email: "email@example.com",
+        message: "Pesan"
+    }
+    """
+    # TODO: Implement send message service
+    data = request.json or {}
+    return {
+        'code': 200,
+        'message': 'Pesan berhasil dikirim',
+        'results': None
+    }, 200
