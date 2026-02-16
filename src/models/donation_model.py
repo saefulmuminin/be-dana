@@ -177,7 +177,8 @@ class DonationModel(BaseModel):
             'FAILED': 'dibatalkan',
             'PENDING': 'menunggu',
             'CANCELLED': 'dibatalkan',
-            'BERHASIL': 'berhasil'
+            'BERHASIL': 'berhasil',
+            'berhasil': 'berhasil' # Safeguard for lowercase input
         }
         db_status = status_map.get(danaStatus, 'menunggu')
         is_success = danaStatus == 'SUCCESS' or danaStatus == '00'
