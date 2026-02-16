@@ -41,14 +41,16 @@ class AuthService:
             if not accessToken:
                 return Response.error("Access token is required", 400)
 
-            # Generate unique email untuk user DANA jika tidak ada info
+            # Get user info from DANA (don't fake email if not provided)
             danaUserId = userInfo.get('user_id') or externalId or str(uuid.uuid4())[:12]
-            email = userInfo.get('email') or f"dana_{danaUserId}@dana.user"
+            email = userInfo.get('email', '')  # Empty if not provided
             nama = userInfo.get('name') or userInfo.get('fullName') or 'DANA User'
             handphone = userInfo.get('phone') or userInfo.get('mobileNumber') or ''
 
             # Cari user existing berdasarkan email atau dana_external_id
-            user = self.userModel.findByEmailAndType(email, 'user')
+            user = None
+            if email:  # Only search by email if provided
+                user = self.userModel.findByEmailAndType(email, 'user')
 
             if not user and externalId:
                 # Coba cari berdasarkan external_id

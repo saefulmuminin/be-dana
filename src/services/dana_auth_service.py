@@ -497,7 +497,7 @@ class DanaAuthService:
                 user = {
                     'id': 0,
                     'nama': userInfo.get('name', f'User_{externalId[:8]}'),
-                    'email': userInfo.get('email', f'{externalId}@dana.miniapp'),
+                    'email': userInfo.get('email', ''),  # Don't hardcode fake email
                     'no_hp': userInfo.get('phone', ''),
                     'external_id': externalId
                 }
@@ -506,7 +506,7 @@ class DanaAuthService:
                 user = {
                     'id': 0,
                     'nama': userInfo.get('name', f'User_{externalId[:8]}'),
-                    'email': userInfo.get('email', f'{externalId}@dana.miniapp'),
+                    'email': userInfo.get('email', ''),  # Don't hardcode fake email
                     'no_hp': userInfo.get('phone', ''),
                     'external_id': externalId
                 }
@@ -549,7 +549,7 @@ class DanaAuthService:
                         # Create new Muzaki
                         muzakiData = {
                             'nama': user.get('nama') or user.get('full_name'),
-                            'email': email or f"{externalId}@dana.miniapp", # Placeholder if empty
+                            'email': email or '',  # Empty if not provided, don't fake it
                             'handphone': phone,
                             'tipe': 'perorangan',
                             'is_active': 'Y',
