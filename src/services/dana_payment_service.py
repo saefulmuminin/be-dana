@@ -1161,7 +1161,7 @@ class DanaPaymentService:
             # Look up partnerRef and danaRef in DB first
             transaction_db = None
             partnerReferenceNo = None
-            dbDanaRefNo = None
+            danaRefNo = None
             
             # Helper to find donation
             try:
@@ -1180,12 +1180,7 @@ class DanaPaymentService:
 
                 if transaction_db:
                     partnerReferenceNo = transaction_db.get('partner_reference_no') or transaction_db.get('order_id')
-                    dbDanaRefNo = transaction_db.get('dana_reference_no')
-                    
-                # Use DB ref if argument is generic/partner type
-                if not danaRefNo or str(danaRefNo).startswith('CINTA-') or str(danaRefNo).startswith('DANA-'):
-                    if dbDanaRefNo:
-                         danaRefNo = dbDanaRefNo
+                    danaRefNo = transaction_db.get('dana_reference_no')
 
             except Exception as e:
                 print(f"[DETAIL] Failed to lookup refs: {e}")
@@ -1284,10 +1279,10 @@ class DanaPaymentService:
                         LEFT JOIN adm_campaign_donasi d ON t.order_id = d.order_id
                         LEFT JOIN adm_campaign c ON d.campaign_id = c.id
                         LEFT JOIN ref_kantor k ON c.kode_institusi = k.id
-                        WHERE t.dana_reference_no = %s OR t.order_id = %s OR t.partner_reference_no = %s
+                        WHERE t.dana_reference_no = %s OR t.order_id = %s
                         ORDER BY t.webhook_received_at DESC
                         LIMIT 1
-                    """, (refNo, refNo, refNo))
+                    """, (refNo, refNo))
                     transaction = cursor.fetchone()
             except Exception as e:
                 print(f"[DETAIL] Failed to query log table: {str(e)}")
@@ -1460,41 +1455,19 @@ class DanaPaymentService:
                     "responseMessage": "Successful"
                 }, 200
 
-            # Map DANA status to internal status
-            danaStatus = status
-            statusMapping = {
-                '00': 'berhasil',      # SUCCESS
-                '01': 'menunggu',      # PENDING
-                '10': 'menunggu',      # IN PROCESS
-                '05': 'dibatalkan',    # CLOSED/EXPIRED
-                '20': 'dibatalkan',    # EXPIRED
-                'SUCCESS': 'berhasil',
-                'captured': 'berhasil',
-                'settled': 'berhasil',
-                'denied': 'dibatalkan',
-                'expired': 'dibatalkan',
-                'failed': 'dibatalkan',
-                'cancel': 'dibatalkan',
-                'pending': 'menunggu'
-            }
-            # Use mapped status or fallback to lower version of status
-            internalStatus = statusMapping.get(str(status), str(status).lower())
-            
-            # Khusus 05/closed -> dibatalkan
-            if str(status) == '05' or str(status).upper() == 'CLOSED':
-                internalStatus = 'dibatalkan'
-                
-            print(f"[WEBHOOK] Parsing status: {status} -> {internalStatus}")
-
             print(f"[WEBHOOK] Donation found: {donation.get('order_id')}, Current status: {donation.get('status')}")
 
             # Update Database Status
             try:
+                # Normalize status
+                normalizedStatus = status.upper() if status else 'PENDING'
+                print(f"[WEBHOOK] Updating donation status to: {normalizedStatus}")
+                
                 # Update donation table (adm_campaign_donasi)
                 self.donationModel.updateDanaStatusRef(
                     donation['order_id'],
                     danaRef,
-                    internalStatus
+                    normalizedStatus
                 )
                 
                 # Update log_dana_transaction table (so History page updates)
@@ -1502,33 +1475,22 @@ class DanaPaymentService:
                 # Use donation['order_id'] (DANA-...) not webhook orderId (which could be CINTA-...)
                 correctOrderId = donation['order_id']
                 
-                # Sanitize timestamps for Log Model update
-                finishedTime = data.get('finishedTime')
-                if finishedTime == '': finishedTime = None
-                
-                paidTime = None
-                additionalInfo = data.get('additionalInfo', {})
-                if isinstance(additionalInfo, dict):
-                    paymentInfo = additionalInfo.get('paymentInfo', {})
-                    if isinstance(paymentInfo, dict):
-                         paidTime = paymentInfo.get('paidTime')
-                if paidTime == '': paidTime = None
-
                 logModel.updateStatus(
                     correctOrderId, 
-                    str(status), # Keep original DANA status code in log for reference
+                    normalizedStatus, 
                     data.get('transactionStatusDesc', 'Updated from webhook'),
-                    datetime.now() if internalStatus == 'berhasil' else None,
-                    datetime.now() if internalStatus == 'berhasil' else None
+                    datetime.now() if normalizedStatus in ['SUCCESS', '00', 'PAID'] else None,
+                    datetime.now() if normalizedStatus in ['SUCCESS', '00', 'PAID'] else None
                 )
-                print(f"[WEBHOOK] Synced status to log_dana_transaction: {correctOrderId} -> {status} (Internal: {internalStatus})")
+                print(f"[WEBHOOK] Synced status to log_dana_transaction: {correctOrderId} -> {normalizedStatus}")
 
                 # Sync to SIMBA if success
-                if internalStatus == 'berhasil':
+                is_success = normalizedStatus in ['SUCCESS', '00', 'PAID'] 
+                if is_success:
                     print(f"[WEBHOOK] ✅ Triggering SIMBA sync for order: {donation['order_id']}")
                     self._syncToSimba(donation)
                 else:
-                     print(f"[WEBHOOK] Status {internalStatus} is not success, skipping SIMBA sync")      
+                     print(f"[WEBHOOK] Status {normalizedStatus} is not success, skipping SIMBA sync")      
 
             except Exception as dbErr:
                 print(f"DB update failed: {str(dbErr)}")
@@ -1544,14 +1506,7 @@ class DanaPaymentService:
                 paymentInfo = additionalInfo.get('paymentInfo', {}) if isinstance(additionalInfo, dict) else {}
                 payOptionInfos = paymentInfo.get('payOptionInfos', []) if isinstance(paymentInfo, dict) else []
                 paymentMethod = payOptionInfos[0].get('payMethod', '') if payOptionInfos else ''
-                
-                # Correctly handle paidTime possibly being empty string
                 paidTime = paymentInfo.get('paidTime', '') if isinstance(paymentInfo, dict) else ''
-                if paidTime == '': paidTime = None
-                
-                # Correctly handle finishedTime possibly being empty string
-                finishedTime = data.get('finishedTime')
-                if finishedTime == '': finishedTime = None
                 
                 # Extract currency and statusDesc safely
                 currency = 'IDR'
@@ -1573,7 +1528,7 @@ class DanaPaymentService:
                     'status': status,
                     'status_desc': statusDesc,
                     'created_time': data.get('createdTime'),
-                    'finished_time': finishedTime,
+                    'finished_time': data.get('finishedTime'),
                     'paid_time': paidTime,
                     'payment_method': paymentMethod,
                     'user_id': donation.get('created_by', '').replace('user_', '') if donation.get('created_by', '').startswith('user_') else None,
