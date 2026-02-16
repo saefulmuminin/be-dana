@@ -605,7 +605,7 @@ class DanaPaymentService:
             'donasi_net': fees['net'],
             'total_bayar': fees['total'],
             'email': data.get('email'),
-            'nama_lengkap': data.get('nama_lengkap', 'Hamba Allah'),
+            'nama_lengkap': data.get('nama_lengkap') if data.get('nama_lengkap') else 'Hamba Allah',
             'doa_muzaki': data.get('doa_muzaki', ''),
             'tipe_zakat': data.get('tipe_zakat', 'infak'),
             'tipe': data.get('tipe', 'perorangan'),
@@ -1866,6 +1866,19 @@ class DanaPaymentService:
                     # Link donation to muzaki
                     self.donationModel.updateMuzakiId(donation['order_id'], muzaki['id'])
                     muzaki_id = muzaki['id']
+                    
+                    # Backfill donation name if it was empty/default and we found a better name
+                    current_donation_name = donation.get('nama_lengkap')
+                    if not current_donation_name or current_donation_name == 'Hamba Allah' or current_donation_name == '':
+                         if final_name and final_name != 'Hamba Allah' and final_name != 'Tidak Diketahui':
+                             print(f"[SIMBA] Backfilling donation name from '{current_donation_name}' to '{final_name}'")
+                             try:
+                                 with self.donationModel.conn.cursor() as cursor:
+                                    sql = f"UPDATE {self.donationModel.table_name} SET nama_lengkap = %s WHERE order_id = %s"
+                                    cursor.execute(sql, (final_name, donation['order_id']))
+                                    self.donationModel.conn.commit()
+                             except Exception as e:
+                                 print(f"[SIMBA] Failed to backfill name: {e}")
                 else:
                     # Create new muzaki
                     print(f"[SIMBA] Creating new muzaki")
