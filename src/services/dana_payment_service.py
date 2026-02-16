@@ -1475,11 +1475,16 @@ class DanaPaymentService:
                 print(f"[WEBHOOK] Updating donation status: {normalizedStatus} → {display_status}")
 
                 # Update donation table (adm_campaign_donasi)
+                # Fix: Pass raw API status to updateDanaStatusRef because it handles mapping internally
+                # api_status can be 'SUCCESS', 'PENDING', etc.
                 self.donationModel.updateDanaStatusRef(
-                    donation['order_id'],
-                    danaRef,
-                    normalizedStatus
+                    donation.get('order_id'), 
+                    donation.get('dana_reference_no'), 
+                    normalizedStatus # Ensure uppercase for STATUS_MAP 
                 )
+                
+                # Fetch fresh from DB to return latest status
+                donation = self.donationModel.findByOrderId(orderId)
                 
                 # Update log_dana_transaction table (so History page updates)
                 logModel = LogDanaTransactionModel()
@@ -2001,6 +2006,9 @@ class DanaPaymentService:
                     npwz = '0'
             else:
                 print(f"[SIMBA] Using existing NPWZ: {npwz}")
+                # Backfill NPWZ to donation if missing
+                if not donation.get('npwz') and npwz:
+                     self.donationModel.updateNpwz(donation['order_id'], npwz)
 
             # Step 3: Save transaction to SIMBA
             print(f"[SIMBA] Saving transaction to SIMBA")
