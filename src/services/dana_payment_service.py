@@ -1166,16 +1166,16 @@ class DanaPaymentService:
             # Helper to find donation
             try:
                 # 1. Try as Partner Ref (CINTA-...) - Most likely from frontend
-                transaction_db = self.donationModel.findByPartnerRefNo(refNo)
+                transaction_db = self.donationModel.findByPartnerRefNo(danaRefNo)
                 
                 # 2. Try as Order ID (DANA-...)
                 if not transaction_db:
-                    transaction_db = self.donationModel.findByOrderId(refNo)
+                    transaction_db = self.donationModel.findByOrderId(danaRefNo)
 
                 # 3. Try as DANA Ref (Numeric)
                 if not transaction_db:
                      with self.donationModel.conn.cursor() as cursor:
-                        cursor.execute(f"SELECT * FROM {self.donationModel.table_name} WHERE dana_reference_no = %s LIMIT 1", (refNo,))
+                        cursor.execute(f"SELECT * FROM {self.donationModel.table_name} WHERE dana_reference_no = %s LIMIT 1", (danaRefNo,))
                         transaction_db = cursor.fetchone()
 
                 if transaction_db:
