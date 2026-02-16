@@ -143,7 +143,7 @@ class CampaignService:
 
                 list_muzaki.append({
                     'nama_muzaki': muzaki.get('nama_muzaki', 'Hamba Allah'),
-                    'url_gambar_muzaki': "", 
+                    'url_gambar_muzaki': muzaki.get('url_gambar_muzaki', '') or "", 
                     'total_zakat': str(int(muzaki.get('total_zakat', 0))),
                     'tgl_zakat': tgl_zakat_str,
                     'doa_muzaki': muzaki.get('doa_muzaki', '') or "",

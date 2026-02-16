@@ -140,25 +140,30 @@ class CampaignModel(BaseModel):
             sql_muzaki = """
                 SELECT
                     CASE
-                        WHEN hamba_allah = 'Y' THEN 'Hamba Allah'
-                        ELSE nama_lengkap
+                        WHEN d.hamba_allah = 'Y' THEN 'Hamba Allah'
+                        ELSE d.nama_lengkap
                     END as nama_muzaki,
-                    nominal as total_zakat,
+                    d.nominal as total_zakat,
                     -- Use tanggal + waktu if available, else fallback to created_date
                     CASE 
-                        WHEN tanggal IS NOT NULL AND waktu IS NOT NULL 
-                        THEN to_timestamp(tanggal::text || ' ' || waktu::text, 'YYYY-MM-DD HH24:MI:SS')
-                        ELSE COALESCE(tgl_donasi, created_date)
+                        WHEN d.tanggal IS NOT NULL AND d.waktu IS NOT NULL 
+                        THEN to_timestamp(d.tanggal::text || ' ' || d.waktu::text, 'YYYY-MM-DD HH24:MI:SS')
+                        ELSE COALESCE(d.tgl_donasi, d.created_date)
                     END as tgl_donasi,
-                    doa_muzaki
-                FROM adm_campaign_donasi
-                WHERE campaign_id = %s AND status = 'berhasil' AND is_delete = 'N'
+                    d.doa_muzaki,
+                    CASE
+                        WHEN d.hamba_allah = 'Y' THEN NULL
+                        ELSE m.foto
+                    END as url_gambar_muzaki
+                FROM adm_campaign_donasi d
+                LEFT JOIN adm_muzaki m ON d.muzaki_id = m.id
+                WHERE d.campaign_id = %s AND d.status = 'berhasil' AND d.is_delete = 'N'
                 -- Order by real timestamp
                  ORDER BY 
                     CASE 
-                        WHEN tanggal IS NOT NULL AND waktu IS NOT NULL 
-                        THEN to_timestamp(tanggal::text || ' ' || waktu::text, 'YYYY-MM-DD HH24:MI:SS')
-                        ELSE COALESCE(tgl_donasi, created_date)
+                        WHEN d.tanggal IS NOT NULL AND d.waktu IS NOT NULL 
+                        THEN to_timestamp(d.tanggal::text || ' ' || d.waktu::text, 'YYYY-MM-DD HH24:MI:SS')
+                        ELSE COALESCE(d.tgl_donasi, d.created_date)
                     END DESC
                 LIMIT 100
             """

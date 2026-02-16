@@ -1446,11 +1446,25 @@ class DanaPaymentService:
             # self.generateSignature usually works for standard SNAP. This endpoint is Widget style.
             # Let's try to reuse the logic from DanaAuthService roughly:
             
-            signature = self.generateSignature('POST', endpoint, requestPayload['request']) 
-            # WAIT: self.generateSignature takes (method, url, body) and does standard HMAC or RSA?
-            # Let's check update: The generic generateSignature might not fit this specific "sign the request body string" requirement if it expects a different structure.
-            # Safe bet: Re-implement the signing logic here exactly as needed or trust that if I pass the right string it works.
-            # Actually, let's implement the specific RSA signing here to be safe and avoid dependency on unknown utility behavior.
+            # FIXED: Use correct method name _generateSignature
+            # But wait, _generateSignature in this class generates: HTTP_METHOD + ":" + ENDPOINT + ":" + LOWERCASE(HEX(SHA256(minify(REQUEST_BODY)))) + ":" + TIMESTAMP
+            # The Widget API signature might be just the RSA signature of the request body json?
+            # DanaAuthService._queryUserProfile uses:
+            # signature = base64.b64encode(signer.sign(digest)).decode('utf-8') of the body string directly.
+            # So _generateSignature is NOT suitable if it prepends method/url/etc.
+            # Let's check _generateSignature implementation again.
+            # It does: stringToSign = f"{httpMethod}:{endpointUrl}:{bodyHash}:{timestamp}"
+            # This is SNAP signature. Widget API needs simple body signature.
+            # So I should NOT use _generateSignature. I should keep the custom RSA implementation I added below it.
+            # The error happened because I called self.generateSignature casually in the code block I added, 
+            # while also having the custom RSA block below it? 
+            # Looking at previous code (Step 604 diff), I had:
+            # signature = self.generateSignature('POST', endpoint, requestPayload['request']) 
+            # AND THEN:
+            # if CRYPTO_AVAILABLE: ... requestPayload['signature'] = signature
+            # I must REMOVE the call to self.generateSignature/self._generateSignature and rely solely on the explicit RSA signing block
+            # because Widget API signature != SNAP signature.
+
             
             stringToSign = requestBodyStr
             
@@ -2074,7 +2088,12 @@ class DanaPaymentService:
                     
                     # Backfill donation name if it was empty/default and we found a better name
                     current_donation_name = donation.get('nama_lengkap')
-                    is_hamba_allah = donation.get('hamba_allah') == 'Y'
+                    
+                    # Robust check for hamba_allah flag
+                    hamba_val = donation.get('hamba_allah')
+                    is_hamba_allah = str(hamba_val).upper() in ['Y', 'TRUE', '1', 'T'] if hamba_val is not None else False
+
+                    print(f"[SIMBA] Donation {donation['order_id']} - Name: {current_donation_name}, Hamba Allah: {is_hamba_allah} (Val: {hamba_val})")
 
                     if not current_donation_name or current_donation_name == 'Hamba Allah' or current_donation_name == '':
                          # ONLY backfill if user is NOT hamba_allah
