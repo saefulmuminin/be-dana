@@ -1370,6 +1370,64 @@ class DanaPaymentService:
             print(f"[DETAIL] EXCEPTION: {traceback.format_exc()}")
             return Response.error(f"Detail error: {str(e)}", 500)
 
+            return Response.error(f"Detail error: {str(e)}", 500)
+
+    def queryUserProfile(self, accessToken):
+        """
+        Query DANA User Profile (untuk ambil foto/avatar)
+        API: /dana/member/query/queryUserProfile.htm
+        """
+        try:
+            # Prepare request body
+            requestBody = {
+                "userResources": ["AVATAR_URL", "NICKNAME", "FULLNAME"]
+            }
+            
+            # Helper to generate signature
+            signature = self.generateSignature('POST', '/dana/member/query/queryUserProfile.htm', requestBody)
+            
+            # Prepare headers
+            headers = {
+                'Content-Type': 'application/json',
+                'X-SIGNATURE': signature,
+                'Authorization': f'Bearer {accessToken}' # Access token is required
+            }
+            
+            # DANA API URL
+            # Note: Gunakan URL production/sandbox sesuai config
+            # Assuming self.baseUrl is already set correctly
+            url = f"{self.baseUrl}/dana/member/query/queryUserProfile.htm"
+            
+            print(f"[DANA API] Query User Profile: {url}")
+            
+            # Execute request
+            response = requests.post(url, json=requestBody, headers=headers, timeout=10)
+            data = response.json()
+            
+            print(f"[DANA API] Response Query User Profile: {json.dumps(data)}")
+            
+            if 'response' in data and 'body' in data['response']:
+                body = data['response']['body']
+                resultInfo = body.get('resultInfo', {})
+                
+                if resultInfo.get('resultCode') == 'SUCCESS':
+                    # Parse resources
+                    userResourceInfos = body.get('userResourceInfos', [])
+                    profileData = {}
+                    for resource in userResourceInfos:
+                        resType = resource.get('resourceType')
+                        resValue = resource.get('value')
+                        profileData[resType] = resValue
+                    return profileData
+                else:
+                    print(f"[DANA API] Query User Profile Failed: {resultInfo.get('resultMsg')}")
+                    return None
+            return None
+            
+        except Exception as e:
+            print(f"[DANA API] Query User Profile Exception: {str(e)}")
+            return None
+
     def webhook(self, data, signature=None, headers=None):
         """
         Handle webhook dari DANA untuk update status pembayaran
@@ -1968,11 +2026,35 @@ class DanaPaymentService:
                         else:
                             print(f"[SIMBA] Failed to create muzaki - create() returned None/False")
                             return
+                        return
                     except Exception as createErr:
                         print(f"[SIMBA] Error creating muzaki: {createErr}")
                         import traceback
                         traceback.print_exc()
                         return
+
+            # --- NEW: Update Foto from DANA Profile if available ---
+            if muzaki_id and user:
+                try:
+                    # Check if user has DANA access token
+                    accessToken = self.userModel.getDanaAccessToken(user['id'])
+                    if accessToken:
+                        print(f"[SIMBA] Fetching DANA User Profile for photo update...")
+                        danaProfile = self.queryUserProfile(accessToken)
+                        if danaProfile:
+                            avatarUrl = danaProfile.get('AVATAR_URL')
+                            if avatarUrl:
+                                print(f"[SIMBA] Updating Muzaki {muzaki_id} photo from DANA: {avatarUrl}")
+                                muzakiModel.updateFoto(muzaki_id, avatarUrl)
+                            else:
+                                print(f"[SIMBA] No AVATAR_URL in DANA profile")
+                        else:
+                            print(f"[SIMBA] Failed to get DANA profile")
+                    else:
+                        print(f"[SIMBA] User {user['id']} has no valid DANA access token. Skipping photo update.")
+                except Exception as photoErr:
+                    print(f"[SIMBA] Error updating photo from DANA: {photoErr}")
+            # -------------------------------------------------------
 
             # Step 2: Register muzaki to SIMBA if no NPWZ
             if not muzaki:

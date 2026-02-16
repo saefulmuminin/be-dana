@@ -158,3 +158,16 @@ class MuzakiModel(BaseModel):
             """
             cursor.execute(sql, (muzakiId,))
             return cursor.fetchone()
+
+    def updateFoto(self, id, fotoUrl):
+        """
+        Update foto muzaki (misal dari DANA Avatar)
+        """
+        if not fotoUrl:
+            return False
+            
+        with self.conn.cursor() as cursor:
+            sql = f"UPDATE {self.table_name} SET foto = %s, updated_date = %s WHERE id = %s"
+            cursor.execute(sql, (fotoUrl, datetime.now(), id))
+            self.conn.commit()
+            return cursor.rowcount > 0
