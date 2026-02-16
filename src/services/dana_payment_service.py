@@ -1417,35 +1417,28 @@ class DanaPaymentService:
             # Per DanaAuthService, we sign the minified JSON of 'request'
             requestBodyStr = json.dumps(requestPayload['request'], separators=(',', ':'))
             
-            # Use internal signature generation if possible, or reimplement custom logic
-            # Check if we have _generateSignatureCustom in this class, if not, verify self.generateSignature behavior
-            # self.generateSignature usually works for standard SNAP. This endpoint is Widget style.
-            # Let's try to reuse the logic from DanaAuthService roughly:
-            
-            signature = self.generateSignature('POST', endpoint, requestPayload['request']) 
-            # WAIT: self.generateSignature takes (method, url, body) and does standard HMAC or RSA?
-            # Let's check update: The generic generateSignature might not fit this specific "sign the request body string" requirement if it expects a different structure.
-            # Safe bet: Re-implement the signing logic here exactly as needed or trust that if I pass the right string it works.
-            # Actually, let's implement the specific RSA signing here to be safe and avoid dependency on unknown utility behavior.
-            
-            stringToSign = requestBodyStr
-            
             # --- Quick RSA Sign Implementation (Copy from DanaAuthService) ---
+            signature = ""
             if CRYPTO_AVAILABLE:
-                privateKey = Config.DANA_PRIVATE_KEY
-                if '\\n' in privateKey: privateKey = privateKey.replace('\\n', '\n')
-                if not privateKey.startswith('-----BEGIN'):
-                    keyBody = privateKey.strip()
-                    lines = [keyBody[i:i+64] for i in range(0, len(keyBody), 64)]
-                    formattedKey = '\n'.join(lines)
-                    privateKey = f"-----BEGIN RSA PRIVATE KEY-----\n{formattedKey}\n-----END RSA PRIVATE KEY-----"
-                
-                pkey = RSA.importKey(privateKey)
-                signer = PKCS1_v1_5.new(pkey)
-                digest = SHA256.new()
-                digest.update(stringToSign.encode('utf-8'))
-                signature = base64.b64encode(signer.sign(digest)).decode('utf-8')
-                requestPayload['signature'] = signature
+                try:
+                    stringToSign = requestBodyStr
+                    privateKey = Config.DANA_PRIVATE_KEY
+                    if '\\n' in privateKey: privateKey = privateKey.replace('\\n', '\n')
+                    if not privateKey.startswith('-----BEGIN'):
+                        keyBody = privateKey.strip()
+                        lines = [keyBody[i:i+64] for i in range(0, len(keyBody), 64)]
+                        formattedKey = '\n'.join(lines)
+                        privateKey = f"-----BEGIN RSA PRIVATE KEY-----\n{formattedKey}\n-----END RSA PRIVATE KEY-----"
+                    
+                    pkey = RSA.importKey(privateKey)
+                    signer = PKCS1_v1_5.new(pkey)
+                    digest = SHA256.new()
+                    digest.update(stringToSign.encode('utf-8'))
+                    signature = base64.b64encode(signer.sign(digest)).decode('utf-8')
+                except Exception as sigErr:
+                    print(f"[DANA API] Signature generation failed: {sigErr}")
+
+            requestPayload['signature'] = signature
             # -----------------------------------------------------------------
 
             headers = {
