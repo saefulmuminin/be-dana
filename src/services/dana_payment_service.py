@@ -1857,14 +1857,17 @@ class DanaPaymentService:
                         if real_name and real_name != 'Hamba Allah' and real_name != 'Tidak Diketahui':
                              print(f"[SIMBA] Backfilling donation name from '{current_donation_name}' to '{real_name}'")
                              try:
+                                 # Use existing connection from donationModel safely
                                  with self.donationModel.conn.cursor() as cursor:
                                     # Update name AND set hamba_allah = 'N' so it shows up
-                                    sql = f"UPDATE {self.donationModel.table_name} SET nama_lengkap = %s, hamba_allah = 'N' WHERE order_id = %s"
-                                    cursor.execute(sql, (real_name, donation['order_id']))
+                                    # Also update updated_date
+                                    sql = f"UPDATE {self.donationModel.table_name} SET nama_lengkap = %s, hamba_allah = 'N', updated_date = %s WHERE order_id = %s"
+                                    cursor.execute(sql, (real_name, datetime.now(), donation['order_id']))
                                     self.donationModel.conn.commit()
-                                    print(f"[SIMBA] Name backfilled and hamba_allah set to 'N'")
+                                    print(f"[SIMBA] Name backfilled and hamba_allah set to 'N' for order {donation['order_id']}")
                              except Exception as e:
                                  print(f"[SIMBA] Failed to backfill name: {e}")
+                                 self.donationModel.conn.rollback()
                 else:
                     print(f"[SIMBA] ⚠️ Muzaki ID {muzaki_id} not found in database! Will try to find/create.")
                     muzaki_id = None  # Reset to trigger search/create flow
@@ -2012,10 +2015,17 @@ class DanaPaymentService:
                 print(f"[SIMBA] Using existing NPWZ: {npwz}")
                 # Backfill NPWZ to donation if missing
                 if not donation.get('npwz') and npwz:
+                     print(f"[SIMBA] Backfilling NPWZ {npwz} to donation {donation['order_id']}")
                      self.donationModel.updateNpwz(donation['order_id'], npwz)
 
             # Step 3: Save transaction to SIMBA
             print(f"[SIMBA] Saving transaction to SIMBA")
+            
+            # Re-enforce status 'berhasil' just in case
+            if donation.get('status') != 'berhasil':
+                 print(f"[SIMBA] Re-enforcing status 'berhasil' for order {donation['order_id']}")
+                 # We use 'SUCCESS' which maps to 'berhasil'
+                 self.donationModel.updateDanaStatusRef(donation['order_id'], donation.get('dana_reference_no'), 'SUCCESS')
             
             # Format tanggal untuk SIMBA (dd/mm/yyyy)
             tgl_donasi = donation.get('tgl_donasi')
