@@ -1804,6 +1804,44 @@ class DanaPaymentService:
                 muzaki = muzakiModel.findById(muzaki_id)
                 if muzaki:
                     print(f"[SIMBA] Existing muzaki found: {muzaki_id}")
+                    
+                    # Backfill donation name if it was empty/default
+                    # Also try to resolve Name from User if we haven't already
+                    current_donation_name = donation.get('nama_lengkap')
+                    donation_hamba_allah = donation.get('hamba_allah')
+                    
+                    if not current_donation_name or current_donation_name == 'Hamba Allah' or current_donation_name == '':
+                        # Need to find the REAL name to backfill
+                        real_name = muzaki.get('nama')
+                        
+                        # If muzaki name is also generic, try to find from User Profile
+                        if not real_name or real_name == 'Hamba Allah' or real_name.replace('0','').replace('8','').isdigit():
+                             created_by = donation.get('created_by', '')
+                             if created_by and created_by.startswith('user_'):
+                                 try:
+                                     user_id = created_by.split('_')[1]
+                                     localUserModel = UserModel()
+                                     user = localUserModel.findById(user_id)
+                                     if user:
+                                         user_name = user.get('nama') or user.get('name') or user.get('full_name')
+                                         if user_name:
+                                             real_name = user_name
+                                             print(f"[SIMBA] Resolved real name from User profile: {real_name}")
+                                     localUserModel.conn.close()
+                                 except Exception as e:
+                                     print(f"[SIMBA] Failed to lookup user for backfill: {e}")
+
+                        if real_name and real_name != 'Hamba Allah' and real_name != 'Tidak Diketahui':
+                             print(f"[SIMBA] Backfilling donation name from '{current_donation_name}' to '{real_name}'")
+                             try:
+                                 with self.donationModel.conn.cursor() as cursor:
+                                    # Update name AND set hamba_allah = 'N' so it shows up
+                                    sql = f"UPDATE {self.donationModel.table_name} SET nama_lengkap = %s, hamba_allah = 'N' WHERE order_id = %s"
+                                    cursor.execute(sql, (real_name, donation['order_id']))
+                                    self.donationModel.conn.commit()
+                                    print(f"[SIMBA] Name backfilled and hamba_allah set to 'N'")
+                             except Exception as e:
+                                 print(f"[SIMBA] Failed to backfill name: {e}")
                 else:
                     print(f"[SIMBA] ⚠️ Muzaki ID {muzaki_id} not found in database! Will try to find/create.")
                     muzaki_id = None  # Reset to trigger search/create flow
