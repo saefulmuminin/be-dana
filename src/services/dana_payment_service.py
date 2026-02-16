@@ -1286,7 +1286,10 @@ class DanaPaymentService:
             status_mapping = {
                 'berhasil': 'SUCCESS',
                 'pending': 'PENDING',
-                'gagal': 'FAILED'
+                'belum': 'PENDING',
+                'menunggu': 'PENDING',
+                'gagal': 'FAILED',
+                'dibatalkan': 'FAILED'
             }
             db_status = transaction.get('status', '').lower()
             api_status = status_mapping.get(db_status, db_status.upper())
@@ -1294,7 +1297,10 @@ class DanaPaymentService:
             desc_mapping = {
                 'berhasil': 'Pembayaran Berhasil',
                 'pending': 'Menunggu Pembayaran',
-                'gagal': 'Pembayaran Gagal'
+                'belum': 'Menunggu Pembayaran',
+                'menunggu': 'Menunggu Pembayaran',
+                'gagal': 'Pembayaran Gagal',
+                'dibatalkan': 'Pembayaran Dibatalkan'
             }
             status_desc = desc_mapping.get(db_status, 'Status Tidak Diketahui')
 
@@ -1552,7 +1558,7 @@ class DanaPaymentService:
                 if status.lower() == 'berhasil':
                     sql += " AND d.status = 'berhasil'"
                 elif status.lower() == 'pending':
-                    sql += " AND d.status = 'pending'"
+                    sql += " AND d.status IN ('belum', 'menunggu', 'pending')"
                 elif status.lower() != 'all':
                     sql += " AND d.status = %s"
                     params.append(status.lower())
@@ -1579,7 +1585,10 @@ class DanaPaymentService:
                     statusMap = {
                         'berhasil': 'SUCCESS',
                         'pending': 'PENDING',
+                        'belum': 'PENDING',
+                        'menunggu': 'PENDING',
                         'gagal': 'FAILED',
+                        'dibatalkan': 'FAILED',
                         'expired': 'EXPIRED'
                     }
                     displayStatus = statusMap.get(trxStatus, trxStatus.upper())
