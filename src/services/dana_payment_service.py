@@ -1284,10 +1284,10 @@ class DanaPaymentService:
                         LEFT JOIN adm_campaign_donasi d ON t.order_id = d.order_id
                         LEFT JOIN adm_campaign c ON d.campaign_id = c.id
                         LEFT JOIN ref_kantor k ON c.kode_institusi = k.id
-                        WHERE t.dana_reference_no = %s OR t.order_id = %s
+                        WHERE t.dana_reference_no = %s OR t.order_id = %s OR t.partner_reference_no = %s
                         ORDER BY t.webhook_received_at DESC
                         LIMIT 1
-                    """, (refNo, refNo))
+                    """, (refNo, refNo, refNo))
                     transaction = cursor.fetchone()
             except Exception as e:
                 print(f"[DETAIL] Failed to query log table: {str(e)}")
