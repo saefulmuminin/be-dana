@@ -563,8 +563,17 @@ class DanaPaymentService:
 
     def _prepareOrderData(self, data):
         """Siapkan data order untuk database"""
-        nominal = float(data.get('nominal'))
+        # Handle Mini App payload keys mismatch
+        nominal = data.get('nominal')
+        if not nominal:
+            nominal = data.get('amount')
+        
+        nominal = float(nominal) if nominal else 0
+            
         campaignId = data.get('campaign_id')
+        if not campaignId:
+            campaignId = data.get('campaignId')
+            
         metodeId = data.get('metode_id', 2)  # Default DANA
 
         # Get metode pembayaran DANA (dengan error handling)
@@ -592,6 +601,22 @@ class DanaPaymentService:
         orderId = f"DANA-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
         partnerRef = f"CINTA-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6].upper()}"
 
+        # Map optional fields
+        nama_lengkap = data.get('nama_lengkap') or data.get('donorName')
+        if not nama_lengkap:
+            nama_lengkap = 'Hamba Allah'
+            
+        hamba_allah = data.get('hamba_allah')
+        if hamba_allah is None:
+            is_anon = data.get('isAnonymous')
+            if is_anon is not None:
+                hamba_allah = 'Y' if str(is_anon).lower() in ['true', '1', 'y', 'yes'] else 'N'
+            else:
+                hamba_allah = 'N'
+                
+        doa = data.get('doa_muzaki') or data.get('message', '')
+        tipe_zakat = data.get('tipe_zakat') or ('zakat' if data.get('isZakat') else 'infak')
+
         return {
             'order_id': orderId,
             'partner_reference_no': partnerRef,
@@ -605,11 +630,11 @@ class DanaPaymentService:
             'donasi_net': fees['net'],
             'total_bayar': fees['total'],
             'email': data.get('email'),
-            'nama_lengkap': data.get('nama_lengkap') if data.get('nama_lengkap') else 'Hamba Allah',
-            'doa_muzaki': data.get('doa_muzaki', ''),
-            'tipe_zakat': data.get('tipe_zakat', 'infak'),
+            'nama_lengkap': nama_lengkap,
+            'doa_muzaki': doa,
+            'tipe_zakat': tipe_zakat,
             'tipe': data.get('tipe', 'perorangan'),
-            'hamba_allah': data.get('hamba_allah', 'N'),
+            'hamba_allah': hamba_allah,
             'npwz': data.get('npwz', ''),
             'status': 'pending',
             'created_by': data.get('created_by', 'miniapp')
