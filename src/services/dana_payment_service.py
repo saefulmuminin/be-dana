@@ -1158,30 +1158,47 @@ class DanaPaymentService:
             timestamp = datetime.now(timezone(timedelta(hours=7))).strftime('%Y-%m-%dT%H:%M:%S+07:00')
             externalId = f"EXT-DETAIL-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
             
-            # Look up partnerRef in DB first
-            partnerReferenceNo = "UNKNOWN"
+            # Look up partnerRef and danaRef in DB first
+            transaction_db = None
+            partnerReferenceNo = None
+            danaRefNo = None
+            
+            # Helper to find donation
             try:
-                # Try to find by danaRefNo first, then orderId
-                donation = self.donationModel.findByOrderId(danaRefNo)
-                if not donation:
-                    # Try finding by dana_reference_no via custom query since model method for that is missing or we can rely on query
-                     with self.donationModel.conn.cursor() as cursor:
-                        cursor.execute(f"SELECT partner_reference_no FROM {self.donationModel.table_name} WHERE dana_reference_no = %s LIMIT 1", (danaRefNo,))
-                        row = cursor.fetchone()
-                        if row:
-                            partnerReferenceNo = row.get('partner_reference_no')
-                else:
-                    partnerReferenceNo = donation.get('partner_reference_no') or donation.get('order_id')
-            except Exception as e:
-                print(f"[DETAIL] Failed to lookup partnerRef: {e}")
+                # 1. Try as Partner Ref (CINTA-...) - Most likely from frontend
+                transaction_db = self.donationModel.findByPartnerRefNo(refNo)
+                
+                # 2. Try as Order ID (DANA-...)
+                if not transaction_db:
+                    transaction_db = self.donationModel.findByOrderId(refNo)
 
-            requestBody = {
-                "originalPartnerReferenceNo": partnerReferenceNo, 
-                "additionalInfo": {
-                    "accessToken": accessToken,
-                    "referenceNo": danaRefNo
+                # 3. Try as DANA Ref (Numeric)
+                if not transaction_db:
+                     with self.donationModel.conn.cursor() as cursor:
+                        cursor.execute(f"SELECT * FROM {self.donationModel.table_name} WHERE dana_reference_no = %s LIMIT 1", (refNo,))
+                        transaction_db = cursor.fetchone()
+
+                if transaction_db:
+                    partnerReferenceNo = transaction_db.get('partner_reference_no') or transaction_db.get('order_id')
+                    danaRefNo = transaction_db.get('dana_reference_no')
+
+            except Exception as e:
+                print(f"[DETAIL] Failed to lookup refs: {e}")
+
+            # If we found DB record and have danaRef, call API. 
+            # If we don't have danaRef (e.g. pending local), we can't call API Detail (requires danaRef).
+            if accessToken and danaRefNo and partnerReferenceNo:
+                requestBody = {
+                    "originalPartnerReferenceNo": partnerReferenceNo, 
+                    "additionalInfo": {
+                        "accessToken": accessToken,
+                        "referenceNo": danaRefNo
+                    }
                 }
-            }
+            else:
+                 # Force fallback if we can't construct valid API request
+                 accessToken = None
+                 print("[DETAIL] Missing DANA Ref or Partner Ref, skipping API call.")
 
             signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
             headers = {
