@@ -1376,41 +1376,100 @@ class DanaPaymentService:
         """
         Query DANA User Profile (untuk ambil foto/avatar)
         API: /dana/member/query/queryUserProfile.htm
+        Ref: Adapted from DanaAuthService._queryUserProfile
         """
         try:
-            # Prepare request body
-            requestBody = {
-                "userResources": ["AVATAR_URL", "NICKNAME", "FULLNAME"]
+            # Use Widget Base URL
+            baseUrl = Config.DANA_WIDGET_BASE_URL
+            endpoint = "/dana/member/query/queryUserProfile.htm"
+            fullUrl = f"{baseUrl}{endpoint}"
+
+            jakartaTz = timezone(timedelta(hours=7))
+            timestamp = datetime.now(jakartaTz).strftime('%Y-%m-%dT%H:%M:%S+07:00')
+            reqMsgId = str(uuid.uuid4()).replace('-', '')
+
+            # Request Body sesuai dokumentasi DANA Widget API (Envelope Format)
+            requestPayload = {
+                "request": {
+                    "head": {
+                        "version": "2.0",
+                        "function": "dana.member.query.queryUserProfile",
+                        "clientId": Config.DANA_CLIENT_ID,
+                        "clientSecret": Config.DANA_CLIENT_SECRET,
+                        "reqTime": timestamp,
+                        "reqMsgId": reqMsgId,
+                        "accessToken": accessToken,
+                        "reserve": "{}"
+                    },
+                    "body": {
+                        "userResources": [
+                            "AVATAR_URL",      # Avatar URL
+                            "NICKNAME",        # Nickname
+                            "FULLNAME",        # Full name
+                            "LOGIN_ID"         # Phone/Login ID
+                        ]
+                    }
+                },
+                "signature": "" 
             }
+
+            # Generate Signature based on 'request' object
+            # Per DanaAuthService, we sign the minified JSON of 'request'
+            requestBodyStr = json.dumps(requestPayload['request'], separators=(',', ':'))
             
-            # Helper to generate signature
-            signature = self.generateSignature('POST', '/dana/member/query/queryUserProfile.htm', requestBody)
+            # Use internal signature generation if possible, or reimplement custom logic
+            # Check if we have _generateSignatureCustom in this class, if not, verify self.generateSignature behavior
+            # self.generateSignature usually works for standard SNAP. This endpoint is Widget style.
+            # Let's try to reuse the logic from DanaAuthService roughly:
             
-            # Prepare headers
+            signature = self.generateSignature('POST', endpoint, requestPayload['request']) 
+            # WAIT: self.generateSignature takes (method, url, body) and does standard HMAC or RSA?
+            # Let's check update: The generic generateSignature might not fit this specific "sign the request body string" requirement if it expects a different structure.
+            # Safe bet: Re-implement the signing logic here exactly as needed or trust that if I pass the right string it works.
+            # Actually, let's implement the specific RSA signing here to be safe and avoid dependency on unknown utility behavior.
+            
+            stringToSign = requestBodyStr
+            
+            # --- Quick RSA Sign Implementation (Copy from DanaAuthService) ---
+            if CRYPTO_AVAILABLE:
+                privateKey = Config.DANA_PRIVATE_KEY
+                if '\\n' in privateKey: privateKey = privateKey.replace('\\n', '\n')
+                if not privateKey.startswith('-----BEGIN'):
+                    keyBody = privateKey.strip()
+                    lines = [keyBody[i:i+64] for i in range(0, len(keyBody), 64)]
+                    formattedKey = '\n'.join(lines)
+                    privateKey = f"-----BEGIN RSA PRIVATE KEY-----\n{formattedKey}\n-----END RSA PRIVATE KEY-----"
+                
+                pkey = RSA.importKey(privateKey)
+                signer = PKCS1_v1_5.new(pkey)
+                digest = SHA256.new()
+                digest.update(stringToSign.encode('utf-8'))
+                signature = base64.b64encode(signer.sign(digest)).decode('utf-8')
+                requestPayload['signature'] = signature
+            # -----------------------------------------------------------------
+
             headers = {
                 'Content-Type': 'application/json',
-                'X-SIGNATURE': signature,
-                'Authorization': f'Bearer {accessToken}' # Access token is required
+                'X-TIMESTAMP': timestamp,
+                'X-CLIENT-KEY': Config.DANA_CLIENT_ID,
             }
             
-            # DANA API URL
-            # Note: Gunakan URL production/sandbox sesuai config
-            # Assuming self.baseUrl is already set correctly
-            url = f"{self.baseUrl}/dana/member/query/queryUserProfile.htm"
+            print(f"[DANA API] Query User Profile: {fullUrl}")
             
-            print(f"[DANA API] Query User Profile: {url}")
+            # Serialize final payload
+            finalPayloadStr = json.dumps(requestPayload, separators=(',', ':'))
             
             # Execute request
-            response = requests.post(url, json=requestBody, headers=headers, timeout=10)
+            response = requests.post(fullUrl, data=finalPayloadStr, headers=headers, timeout=10)
             data = response.json()
             
-            print(f"[DANA API] Response Query User Profile: {json.dumps(data)}")
+            # print(f"[DANA API] Response: {json.dumps(data)}")
             
             if 'response' in data and 'body' in data['response']:
                 body = data['response']['body']
                 resultInfo = body.get('resultInfo', {})
                 
-                if resultInfo.get('resultCode') == 'SUCCESS':
+                if resultInfo.get('resultCode') == 'SUCCESS' or resultInfo.get('resultStatus') == 'S':
                     # Parse resources
                     userResourceInfos = body.get('userResourceInfos', [])
                     profileData = {}
