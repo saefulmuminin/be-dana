@@ -1161,7 +1161,7 @@ class DanaPaymentService:
             # Look up partnerRef and danaRef in DB first
             transaction_db = None
             partnerReferenceNo = None
-            danaRefNo = None
+            dbDanaRefNo = None
             
             # Helper to find donation
             try:
@@ -1180,7 +1180,12 @@ class DanaPaymentService:
 
                 if transaction_db:
                     partnerReferenceNo = transaction_db.get('partner_reference_no') or transaction_db.get('order_id')
-                    danaRefNo = transaction_db.get('dana_reference_no')
+                    dbDanaRefNo = transaction_db.get('dana_reference_no')
+                    
+                # Use DB ref if argument is generic/partner type
+                if not danaRefNo or str(danaRefNo).startswith('CINTA-') or str(danaRefNo).startswith('DANA-'):
+                    if dbDanaRefNo:
+                         danaRefNo = dbDanaRefNo
 
             except Exception as e:
                 print(f"[DETAIL] Failed to lookup refs: {e}")
@@ -1195,28 +1200,31 @@ class DanaPaymentService:
                         "referenceNo": danaRefNo
                     }
                 }
+                
+                signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
+                headers = {
+                    'Content-Type': 'application/json',
+                    'X-TIMESTAMP': timestamp,
+                    'X-PARTNER-ID': Config.DANA_CLIENT_ID,
+                    'X-EXTERNAL-ID': externalId,
+                    'X-DEVICE-ID': 'BACKEND-SERVER',
+                    'X-IP-ADDRESS': '127.0.0.1',
+                    'CHANNEL-ID': Config.DANA_CHANNEL_ID,
+                    'X-SIGNATURE': signature,
+                    'Authorization-Customer': f"Bearer {accessToken}"
+                }
+
+                print(f"Calling DANA Detail API: {fullUrl}")
+                response = requests.post(fullUrl, json=requestBody, headers=headers, timeout=30)
+                self.logApiCall(endpoint, 'POST', requestBody, response.status_code, 
+                                response.json() if response.ok else response.text, danaRefNo)
+
+                if response.ok:
+                    return {'success': True, 'data': response.json()}
+                return {'success': False, 'error': f"{response.status_code}: {response.text}"}
             else:
                  # Force fallback if we can't construct valid API request
-                 accessToken = None
-                 print("[DETAIL] Missing DANA Ref or Partner Ref, skipping API call.")
-
-            signature = self._generateSignature("POST", endpoint, requestBody, timestamp)
-            headers = {
-                'Content-Type': 'application/json',
-                'X-TIMESTAMP': timestamp,
-                'X-PARTNER-ID': Config.DANA_CLIENT_ID,
-                'X-EXTERNAL-ID': externalId,
-                'X-DEVICE-ID': 'BACKEND-SERVER',
-                'X-IP-ADDRESS': '127.0.0.1',
-                'CHANNEL-ID': Config.DANA_CHANNEL_ID,
-                'X-SIGNATURE': signature,
-                'Authorization-Customer': f"Bearer {accessToken}"
-            }
-
-            print(f"Calling DANA Detail API: {fullUrl}")
-            response = requests.post(fullUrl, json=requestBody, headers=headers, timeout=30)
-            self.logApiCall(endpoint, 'POST', requestBody, response.status_code, 
-                            response.json() if response.ok else response.text, danaRefNo)
+                 return {'success': False, 'error': "Missing DANA Ref or Partner Ref"}
 
             if response.ok:
                 return {'success': True, 'data': response.json()}
