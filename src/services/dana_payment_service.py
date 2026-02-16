@@ -1158,8 +1158,25 @@ class DanaPaymentService:
             timestamp = datetime.now(timezone(timedelta(hours=7))).strftime('%Y-%m-%dT%H:%M:%S+07:00')
             externalId = f"EXT-DETAIL-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8].upper()}"
             
+            # Look up partnerRef in DB first
+            partnerReferenceNo = "UNKNOWN"
+            try:
+                # Try to find by danaRefNo first, then orderId
+                donation = self.donationModel.findByOrderId(danaRefNo)
+                if not donation:
+                    # Try finding by dana_reference_no via custom query since model method for that is missing or we can rely on query
+                     with self.donationModel.conn.cursor() as cursor:
+                        cursor.execute(f"SELECT partner_reference_no FROM {self.donationModel.table_name} WHERE dana_reference_no = %s LIMIT 1", (danaRefNo,))
+                        row = cursor.fetchone()
+                        if row:
+                            partnerReferenceNo = row.get('partner_reference_no')
+                else:
+                    partnerReferenceNo = donation.get('partner_reference_no') or donation.get('order_id')
+            except Exception as e:
+                print(f"[DETAIL] Failed to lookup partnerRef: {e}")
+
             requestBody = {
-                "originalPartnerReferenceNo": "UNKNOWN", # Placeholder if we don't have it handy
+                "originalPartnerReferenceNo": partnerReferenceNo, 
                 "additionalInfo": {
                     "accessToken": accessToken,
                     "referenceNo": danaRefNo
@@ -1521,8 +1538,87 @@ class DanaPaymentService:
     def getHistory(self, userId=None, month=None, year=None, status=None, limit=20, offset=0):
         """
         Get transaction history for Mini App
+        Strategy:
+        1. Try to get from DANA API if user has access token (filtered by date)
+        2. Fallback to local database
         """
         try:
+            # Check user access token
+            accessToken = None
+            if userId:
+                user = self.userModel.findById(userId)
+                if user:
+                    accessToken = user.get('dana_access_token')
+
+            # 1. Try DANA API
+            if accessToken:
+                try:
+                    # Calculate dates
+                    now = datetime.now()
+                    target_year = int(year) if year else now.year
+                    target_month = int(month) if month else now.month
+                    
+                    import calendar
+                    _, last_day = calendar.monthrange(target_year, target_month)
+                    
+                    # Create aware datetime objects (UTC)
+                    # Note: DANA expects UTC for fromDateTime/toDateTime
+                    start_date = datetime(target_year, target_month, 1, 0, 0, 0)
+                    end_date = datetime(target_year, target_month, last_day, 23, 59, 59)
+                    
+                    # Convert to format: YYYY-MM-DDTHH:mm:ssZ
+                    fromInit = start_date.strftime('%Y-%m-%dT%H:%M:%SZ')
+                    toInit = end_date.strftime('%Y-%m-%dT%H:%M:%SZ')
+                    
+                    print(f"[HISTORY] Fetching from DANA API: {fromInit} to {toInit}")
+                    
+                    api_result = self._callDanaTransactionHistoryApi(
+                        accessToken, 
+                        page=(int(offset) // int(limit)) + 1, 
+                        pageSize=limit, 
+                        fromDate=fromInit,
+                        toDate=toInit
+                    )
+                    
+                    if api_result['success'] and api_result.get('data', {}).get('detailData'):
+                        print("[HISTORY] Got data from DANA API")
+                        # Map DANA data
+                        dana_txs = api_result['data']['detailData']
+                        mapped_results = []
+                        
+                        for tx in dana_txs:
+                            mapped_results.append({
+                                "referenceNo": tx.get('referenceNo'),
+                                "originalReferenceNo": tx.get('partnerReferenceNo'),
+                                "merchantId": self.merchantId,
+                                "transactionStatus": tx.get('status'),
+                                "status": tx.get('status'),
+                                "transDateTime": tx.get('dateTime'), # Already formatted from DANA
+                                "dateTime": tx.get('dateTime'),
+                                "amount": tx.get('amount'),
+                                "campaignName": tx.get('remark') or "Donasi DANA",
+                                "institutionName": "BAZNAS",
+                                "source": "dana_api"
+                            })
+                            
+                        # Filter by status if needed (client side filter since API returns list)
+                        if status and status.lower() != 'all':
+                             # map frontend status 'success' -> 'SUCCESS'
+                             target_status = 'SUCCESS' if status.lower() == 'berhasil' else \
+                                             'PENDING' if status.lower() == 'pending' else \
+                                             status.upper()
+                             
+                             mapped_results = [r for r in mapped_results if r['status'] == target_status]
+
+                        return Response.success(
+                            data={"detailData": mapped_results}, 
+                            message="History retrieved from DANA API"
+                        )
+                except Exception as apiErr:
+                    print(f"[HISTORY] DANA API Attempt Failed: {str(apiErr)}")
+                    # Continue to fallback
+            
+            # 2. Fallback to Local DB
             conn = self.db.getConnection()
             results = []
             
@@ -1607,16 +1703,11 @@ class DanaPaymentService:
                         },
                         "campaignName": campaignName or "Donasi",
                         "institutionName": "BAZNAS RI (Pusat)",
-                        "remark": campaignName or "Donasi",
-                        "campaignKategori": kategori or "Umum"
+                        "source": "local_database"
                     })
             
-            return {
-                "responseCode": "200",
-                "responseMessage": "Success",
-                "detailData": results
-            }
-            
+            return Response.success(data={"detailData": results}, message="History retrieved form local DB")
+
         except Exception as e:
             print(f"[History] Error: {str(e)}")
             import traceback
