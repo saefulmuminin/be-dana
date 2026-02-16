@@ -1935,8 +1935,23 @@ class DanaPaymentService:
                 print(f"[SIMBA] Donation not found")
                 return
 
-            # Step 1: Get or create muzaki
             muzaki_id = donation.get('muzaki_id')
+            
+            # --- Initialize 'user' early to avoid UnboundLocalError and ensure Photo Update ---
+            user = None
+            try:
+                created_by = donation.get('created_by', '')
+                if created_by and created_by.startswith('user_'):
+                    user_id = int(created_by.replace('user_', ''))
+                    # Use self.userModel (already initialized in DanaPaymentService)
+                    user = self.userModel.findById(user_id)
+                    if user:
+                        print(f"[SIMBA] Found user early: {user_id}")
+            except Exception as e:
+                print(f"[SIMBA] Early user lookup failed: {e}")
+            # ---------------------------------------------------------------------------------
+
+            # Step 1: Get or create muzaki
             muzaki = None
 
             if muzaki_id:
@@ -1955,21 +1970,13 @@ class DanaPaymentService:
                         real_name = muzaki.get('nama')
                         
                         # If muzaki name is also generic, try to find from User Profile
-                        if not real_name or real_name == 'Hamba Allah' or real_name.replace('0','').replace('8','').isdigit():
-                             created_by = donation.get('created_by', '')
-                             if created_by and created_by.startswith('user_'):
-                                 try:
-                                     user_id = created_by.split('_')[1]
-                                     localUserModel = UserModel()
-                                     user = localUserModel.findById(user_id)
-                                     if user:
-                                         user_name = user.get('nama') or user.get('name') or user.get('full_name')
-                                         if user_name:
-                                             real_name = user_name
-                                             print(f"[SIMBA] Resolved real name from User profile: {real_name}")
-                                     localUserModel.conn.close()
-                                 except Exception as e:
-                                     print(f"[SIMBA] Failed to lookup user for backfill: {e}")
+                        if not real_name or real_name == 'Hamba Allah' or (real_name and real_name.replace('0','').replace('8','').isdigit()):
+                             # Use the 'user' we already fetched
+                             if user:
+                                 user_name = user.get('nama') or user.get('name') or user.get('full_name')
+                                 if user_name:
+                                     real_name = user_name
+                                     print(f"[SIMBA] Resolved real name from User profile: {real_name}")
 
                         if real_name and real_name != 'Hamba Allah' and real_name != 'Tidak Diketahui':
                              print(f"[SIMBA] Backfilling donation name from '{current_donation_name}' to '{real_name}'")
@@ -1996,18 +2003,19 @@ class DanaPaymentService:
                 # Get user data - try multiple methods
                 user_name = None
                 user_phone = ''
-                user = None
+                # user is already initialized at top level
                 
                 # Method 1: Try to get user by created_by (might be user_id)
-                created_by = donation.get('created_by', '')
-                if created_by and created_by.startswith('user_'):
-                    try:
-                        user_id = int(created_by.replace('user_', ''))
-                        user = self.userModel.findById(user_id)
-                        if user:
-                            print(f"[SIMBA] Found user by created_by: {user_id}")
-                    except Exception as e:
-                        print(f"[SIMBA] Error parsing created_by: {e}")
+                if not user:
+                    created_by = donation.get('created_by', '')
+                    if created_by and created_by.startswith('user_'):
+                        try:
+                            user_id = int(created_by.replace('user_', ''))
+                            user = self.userModel.findById(user_id)
+                            if user:
+                                print(f"[SIMBA] Found user by created_by: {user_id}")
+                        except Exception as e:
+                            print(f"[SIMBA] Error parsing created_by: {e}")
                 
                 # Method 2: Try to get user by email
                 if not user and email:
