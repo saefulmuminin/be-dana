@@ -176,7 +176,8 @@ class DonationModel(BaseModel):
             '05': 'dibatalkan',
             'FAILED': 'dibatalkan',
             'PENDING': 'menunggu',
-            'CANCELLED': 'dibatalkan'
+            'CANCELLED': 'dibatalkan',
+            'BERHASIL': 'berhasil'
         }
         db_status = status_map.get(danaStatus, 'menunggu')
         is_success = danaStatus == 'SUCCESS' or danaStatus == '00'

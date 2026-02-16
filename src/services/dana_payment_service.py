@@ -1508,45 +1508,59 @@ class DanaPaymentService:
                 import traceback
                 traceback.print_exc()
 
-            # Log transaction to log_dana_transaction table
-            try:
-                logModel = LogDanaTransactionModel()
+                # Log/Update transaction to log_dana_transaction table
+                # We already tried to update status above. If it succeeded, we don't need to create a new record.
+                # Only create if updateStatus failed (meaning record doesn't exist)
                 
-                # Extract payment info
-                additionalInfo = data.get('additionalInfo', {})
-                paymentInfo = additionalInfo.get('paymentInfo', {}) if isinstance(additionalInfo, dict) else {}
-                payOptionInfos = paymentInfo.get('payOptionInfos', []) if isinstance(paymentInfo, dict) else []
-                paymentMethod = payOptionInfos[0].get('payMethod', '') if payOptionInfos else ''
-                paidTime = paymentInfo.get('paidTime', '') if isinstance(paymentInfo, dict) else ''
+                # Check if updateStatus was already called successfully
+                # We called logModel.updateStatus(correctOrderId...) earlier at line ~1489
+                # Let's verify if we should create a new record or not.
                 
-                # Extract currency and statusDesc safely
-                currency = 'IDR'
-                if isinstance(data.get('amount'), dict):
-                    currency = data.get('amount', {}).get('currency', 'IDR')
+                # To be safe, let's try to find if it exists first
+                existing_log = logModel.findLatestByOrderId(donation.get('order_id'))
                 
-                statusDesc = data.get('transactionStatusDesc') or \
-                             data.get('statusMessage') or \
-                             data.get('responseMessage') or \
-                             'Webhook received'
+                if not existing_log:
+                    # Create new log only if not exists
+                    print(f"[LOG_DANA] No existing log found for {donation.get('order_id')}, creating new one.")
+                    
+                    # Extract payment info
+                    additionalInfo = data.get('additionalInfo', {})
+                    paymentInfo = additionalInfo.get('paymentInfo', {}) if isinstance(additionalInfo, dict) else {}
+                    payOptionInfos = paymentInfo.get('payOptionInfos', []) if isinstance(paymentInfo, dict) else []
+                    paymentMethod = payOptionInfos[0].get('payMethod', '') if payOptionInfos else ''
+                    paidTime = paymentInfo.get('paidTime', '') if isinstance(paymentInfo, dict) else ''
+                    
+                    # Extract currency and statusDesc safely
+                    currency = 'IDR'
+                    if isinstance(data.get('amount'), dict):
+                        currency = data.get('amount', {}).get('currency', 'IDR')
+                    
+                    statusDesc = data.get('transactionStatusDesc') or \
+                                 data.get('statusMessage') or \
+                                 data.get('responseMessage') or \
+                                 'Webhook received'
 
-                logModel.create({
-                    'order_id': donation.get('order_id'),
-                    'partner_reference_no': partnerRef,
-                    'dana_reference_no': danaRef,
-                    'merchant_id': data.get('merchantId', ''),
-                    'amount': amount,
-                    'currency': currency,
-                    'status': status,
-                    'status_desc': statusDesc,
-                    'created_time': data.get('createdTime'),
-                    'finished_time': data.get('finishedTime'),
-                    'paid_time': paidTime,
-                    'payment_method': paymentMethod,
-                    'user_id': donation.get('created_by', '').replace('user_', '') if donation.get('created_by', '').startswith('user_') else None,
-                    'email': donation.get('email', ''),
-                    'phone': donation.get('handphone', ''),
-                    'raw_payload': data
-                })
+                    logModel.create({
+                        'order_id': donation.get('order_id'),
+                        'partner_reference_no': partnerRef,
+                        'dana_reference_no': danaRef,
+                        'merchant_id': data.get('merchantId', ''),
+                        'amount': amount,
+                        'currency': currency,
+                        'status': status,
+                        'status_desc': statusDesc,
+                        'created_time': data.get('createdTime'),
+                        'finished_time': data.get('finishedTime'),
+                        'paid_time': paidTime,
+                        'payment_method': paymentMethod,
+                        'user_id': donation.get('created_by', '').replace('user_', '') if donation.get('created_by', '').startswith('user_') else None,
+                        'email': donation.get('email', ''),
+                        'phone': donation.get('handphone', ''),
+                        'raw_payload': data
+                    })
+                else:
+                    print(f"[LOG_DANA] Log already exists/updated for {donation.get('order_id')}, skipping creation.")
+
             except Exception as logErr:
                 print(f"[LOG_DANA] Failed to log webhook transaction: {logErr}")
                 import traceback
