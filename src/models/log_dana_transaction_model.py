@@ -222,6 +222,8 @@ class LogDanaTransactionModel:
                     SELECT
                         t.*,
                         d.campaign_id,
+                        d.tanggal as donation_date,
+                        d.waktu as donation_time,
                         c.name as campaign_name,
                         c.kategori as campaign_kategori,
                         k.name as institution_name,
@@ -260,6 +262,8 @@ class LogDanaTransactionModel:
                     SELECT
                         t.*,
                         d.campaign_id,
+                        d.tanggal as donation_date,
+                        d.waktu as donation_time,
                         c.name as campaign_name,
                         c.kategori as campaign_kategori,
                         k.name as institution_name,

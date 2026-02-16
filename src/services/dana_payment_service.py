@@ -1119,10 +1119,34 @@ class DanaPaymentService:
             }
 
             for tx in transactions:
+                # Determine transaction date/time
+                trans_dt = tx.get('created_time')
+                if tx.get('donation_date') and tx.get('donation_time'):
+                     try:
+                         # Combine date and time
+                         d_date = tx.get('donation_date')
+                         d_time = tx.get('donation_time')
+                         
+                         # Handle if they are strings
+                         if isinstance(d_date, str):
+                             d_date = datetime.strptime(d_date, '%Y-%m-%d').date()
+                         if isinstance(d_time, str):
+                             # Check if it's already a time object (not likely if coming from raw sql without parsing, but psycopg2 does parse)
+                             if not isinstance(d_time, (datetime, type(datetime.now().time()))):
+                                  try:
+                                     d_time = datetime.strptime(str(d_time), '%H:%M:%S').time()
+                                  except ValueError:
+                                     # Handle case where time might be partial or contain decimals
+                                     d_time = datetime.strptime(str(d_time).split('.')[0], '%H:%M:%S').time()
+                                 
+                         trans_dt = datetime.combine(d_date, d_time)
+                     except Exception as e:
+                         pass # Fallback to created_time
+
                 formatted_data["detailData"].append({
                     "originalPartnerReferenceNo": tx.get('partner_reference_no') or tx.get('order_id'),
                     "originalReferenceNo": tx.get('dana_reference_no') or tx.get('order_id'),
-                    "transDateTime": tx.get('created_time').isoformat() if tx.get('created_time') else None,
+                    "transDateTime": trans_dt.isoformat() if trans_dt else None,
                     "amount": {
                         "value": str(tx.get('amount', 0)),
                         "currency": tx.get('currency', 'IDR')
@@ -1417,28 +1441,35 @@ class DanaPaymentService:
             # Per DanaAuthService, we sign the minified JSON of 'request'
             requestBodyStr = json.dumps(requestPayload['request'], separators=(',', ':'))
             
+            # Use internal signature generation if possible, or reimplement custom logic
+            # Check if we have _generateSignatureCustom in this class, if not, verify self.generateSignature behavior
+            # self.generateSignature usually works for standard SNAP. This endpoint is Widget style.
+            # Let's try to reuse the logic from DanaAuthService roughly:
+            
+            signature = self.generateSignature('POST', endpoint, requestPayload['request']) 
+            # WAIT: self.generateSignature takes (method, url, body) and does standard HMAC or RSA?
+            # Let's check update: The generic generateSignature might not fit this specific "sign the request body string" requirement if it expects a different structure.
+            # Safe bet: Re-implement the signing logic here exactly as needed or trust that if I pass the right string it works.
+            # Actually, let's implement the specific RSA signing here to be safe and avoid dependency on unknown utility behavior.
+            
+            stringToSign = requestBodyStr
+            
             # --- Quick RSA Sign Implementation (Copy from DanaAuthService) ---
-            signature = ""
             if CRYPTO_AVAILABLE:
-                try:
-                    stringToSign = requestBodyStr
-                    privateKey = Config.DANA_PRIVATE_KEY
-                    if '\\n' in privateKey: privateKey = privateKey.replace('\\n', '\n')
-                    if not privateKey.startswith('-----BEGIN'):
-                        keyBody = privateKey.strip()
-                        lines = [keyBody[i:i+64] for i in range(0, len(keyBody), 64)]
-                        formattedKey = '\n'.join(lines)
-                        privateKey = f"-----BEGIN RSA PRIVATE KEY-----\n{formattedKey}\n-----END RSA PRIVATE KEY-----"
-                    
-                    pkey = RSA.importKey(privateKey)
-                    signer = PKCS1_v1_5.new(pkey)
-                    digest = SHA256.new()
-                    digest.update(stringToSign.encode('utf-8'))
-                    signature = base64.b64encode(signer.sign(digest)).decode('utf-8')
-                except Exception as sigErr:
-                    print(f"[DANA API] Signature generation failed: {sigErr}")
-
-            requestPayload['signature'] = signature
+                privateKey = Config.DANA_PRIVATE_KEY
+                if '\\n' in privateKey: privateKey = privateKey.replace('\\n', '\n')
+                if not privateKey.startswith('-----BEGIN'):
+                    keyBody = privateKey.strip()
+                    lines = [keyBody[i:i+64] for i in range(0, len(keyBody), 64)]
+                    formattedKey = '\n'.join(lines)
+                    privateKey = f"-----BEGIN RSA PRIVATE KEY-----\n{formattedKey}\n-----END RSA PRIVATE KEY-----"
+                
+                pkey = RSA.importKey(privateKey)
+                signer = PKCS1_v1_5.new(pkey)
+                digest = SHA256.new()
+                digest.update(stringToSign.encode('utf-8'))
+                signature = base64.b64encode(signer.sign(digest)).decode('utf-8')
+                requestPayload['signature'] = signature
             # -----------------------------------------------------------------
 
             headers = {
@@ -1928,23 +1959,8 @@ class DanaPaymentService:
                 print(f"[SIMBA] Donation not found")
                 return
 
-            muzaki_id = donation.get('muzaki_id')
-            
-            # --- Initialize 'user' early to avoid UnboundLocalError and ensure Photo Update ---
-            user = None
-            try:
-                created_by = donation.get('created_by', '')
-                if created_by and created_by.startswith('user_'):
-                    user_id = int(created_by.replace('user_', ''))
-                    # Use self.userModel (already initialized in DanaPaymentService)
-                    user = self.userModel.findById(user_id)
-                    if user:
-                        print(f"[SIMBA] Found user early: {user_id}")
-            except Exception as e:
-                print(f"[SIMBA] Early user lookup failed: {e}")
-            # ---------------------------------------------------------------------------------
-
             # Step 1: Get or create muzaki
+            muzaki_id = donation.get('muzaki_id')
             muzaki = None
 
             if muzaki_id:
@@ -1963,13 +1979,21 @@ class DanaPaymentService:
                         real_name = muzaki.get('nama')
                         
                         # If muzaki name is also generic, try to find from User Profile
-                        if not real_name or real_name == 'Hamba Allah' or (real_name and real_name.replace('0','').replace('8','').isdigit()):
-                             # Use the 'user' we already fetched
-                             if user:
-                                 user_name = user.get('nama') or user.get('name') or user.get('full_name')
-                                 if user_name:
-                                     real_name = user_name
-                                     print(f"[SIMBA] Resolved real name from User profile: {real_name}")
+                        if not real_name or real_name == 'Hamba Allah' or real_name.replace('0','').replace('8','').isdigit():
+                             created_by = donation.get('created_by', '')
+                             if created_by and created_by.startswith('user_'):
+                                 try:
+                                     user_id = created_by.split('_')[1]
+                                     localUserModel = UserModel()
+                                     user = localUserModel.findById(user_id)
+                                     if user:
+                                         user_name = user.get('nama') or user.get('name') or user.get('full_name')
+                                         if user_name:
+                                             real_name = user_name
+                                             print(f"[SIMBA] Resolved real name from User profile: {real_name}")
+                                     localUserModel.conn.close()
+                                 except Exception as e:
+                                     print(f"[SIMBA] Failed to lookup user for backfill: {e}")
 
                         if real_name and real_name != 'Hamba Allah' and real_name != 'Tidak Diketahui':
                              print(f"[SIMBA] Backfilling donation name from '{current_donation_name}' to '{real_name}'")
@@ -1996,19 +2020,18 @@ class DanaPaymentService:
                 # Get user data - try multiple methods
                 user_name = None
                 user_phone = ''
-                # user is already initialized at top level
+                user = None
                 
                 # Method 1: Try to get user by created_by (might be user_id)
-                if not user:
-                    created_by = donation.get('created_by', '')
-                    if created_by and created_by.startswith('user_'):
-                        try:
-                            user_id = int(created_by.replace('user_', ''))
-                            user = self.userModel.findById(user_id)
-                            if user:
-                                print(f"[SIMBA] Found user by created_by: {user_id}")
-                        except Exception as e:
-                            print(f"[SIMBA] Error parsing created_by: {e}")
+                created_by = donation.get('created_by', '')
+                if created_by and created_by.startswith('user_'):
+                    try:
+                        user_id = int(created_by.replace('user_', ''))
+                        user = self.userModel.findById(user_id)
+                        if user:
+                            print(f"[SIMBA] Found user by created_by: {user_id}")
+                    except Exception as e:
+                        print(f"[SIMBA] Error parsing created_by: {e}")
                 
                 # Method 2: Try to get user by email
                 if not user and email:
@@ -2051,16 +2074,35 @@ class DanaPaymentService:
                     
                     # Backfill donation name if it was empty/default and we found a better name
                     current_donation_name = donation.get('nama_lengkap')
+                    is_hamba_allah = donation.get('hamba_allah') == 'Y'
+
                     if not current_donation_name or current_donation_name == 'Hamba Allah' or current_donation_name == '':
-                         if final_name and final_name != 'Hamba Allah' and final_name != 'Tidak Diketahui':
-                             print(f"[SIMBA] Backfilling donation name from '{current_donation_name}' to '{final_name}'")
-                             try:
-                                 with self.donationModel.conn.cursor() as cursor:
-                                    sql = f"UPDATE {self.donationModel.table_name} SET nama_lengkap = %s WHERE order_id = %s"
-                                    cursor.execute(sql, (final_name, donation['order_id']))
-                                    self.donationModel.conn.commit()
-                             except Exception as e:
-                                 print(f"[SIMBA] Failed to backfill name: {e}")
+                         # ONLY backfill if user is NOT hamba_allah
+                         if not is_hamba_allah:
+                             if final_name and final_name != 'Hamba Allah' and final_name != 'Tidak Diketahui':
+                                 print(f"[SIMBA] Backfilling donation name from '{current_donation_name}' to '{final_name}'")
+                                 try:
+                                     with self.donationModel.conn.cursor() as cursor:
+                                        # Also update updated_date
+                                        sql = f"UPDATE {self.donationModel.table_name} SET nama_lengkap = %s, hamba_allah = 'N', updated_date = %s WHERE order_id = %s"
+                                        cursor.execute(sql, (final_name, datetime.now(), donation['order_id']))
+                                        self.donationModel.conn.commit()
+                                        print(f"[SIMBA] Name backfilled and hamba_allah set to 'N' for order {donation['order_id']}")
+                                 except Exception as e:
+                                     print(f"[SIMBA] Failed to backfill name: {e}")
+                                     self.donationModel.conn.rollback()
+                         else:
+                             print(f"[SIMBA] User requested 'Hamba Allah', skipping name backfill.")
+                             # Optional: Ensure it IS 'Hamba Allah' in DB if it was empty
+                             if current_donation_name != 'Hamba Allah':
+                                 try:
+                                     with self.donationModel.conn.cursor() as cursor:
+                                        sql = f"UPDATE {self.donationModel.table_name} SET nama_lengkap = 'Hamba Allah', updated_date = %s WHERE order_id = %s"
+                                        cursor.execute(sql, (datetime.now(), donation['order_id']))
+                                        self.donationModel.conn.commit()
+                                        print(f"[SIMBA] Enforced 'Hamba Allah' name for order {donation['order_id']}")
+                                 except:
+                                     pass
                 else:
                     # Create new muzaki
                     print(f"[SIMBA] Creating new muzaki")

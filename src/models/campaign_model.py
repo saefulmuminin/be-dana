@@ -144,11 +144,22 @@ class CampaignModel(BaseModel):
                         ELSE nama_lengkap
                     END as nama_muzaki,
                     nominal as total_zakat,
-                    COALESCE(tgl_donasi, created_date) as tgl_donasi,
+                    -- Use tanggal + waktu if available, else fallback to created_date
+                    CASE 
+                        WHEN tanggal IS NOT NULL AND waktu IS NOT NULL 
+                        THEN to_timestamp(tanggal::text || ' ' || waktu::text, 'YYYY-MM-DD HH24:MI:SS')
+                        ELSE COALESCE(tgl_donasi, created_date)
+                    END as tgl_donasi,
                     doa_muzaki
                 FROM adm_campaign_donasi
                 WHERE campaign_id = %s AND status = 'berhasil' AND is_delete = 'N'
-                ORDER BY COALESCE(tgl_donasi, created_date) DESC
+                -- Order by real timestamp
+                 ORDER BY 
+                    CASE 
+                        WHEN tanggal IS NOT NULL AND waktu IS NOT NULL 
+                        THEN to_timestamp(tanggal::text || ' ' || waktu::text, 'YYYY-MM-DD HH24:MI:SS')
+                        ELSE COALESCE(tgl_donasi, created_date)
+                    END DESC
                 LIMIT 100
             """
             cursor.execute(sql_muzaki, (campaign_id,))
