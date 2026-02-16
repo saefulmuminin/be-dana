@@ -1484,7 +1484,11 @@ class DanaPaymentService:
                 )
                 
                 # Fetch fresh from DB to return latest status
-                donation = self.donationModel.findByOrderId(orderId)
+                # Fix: Use the order_id from the EXISTING donation object, not the potentially-partner-ref 'orderId' variable
+                # AND don't overwrite the main 'donation' variable if the fetch fails (safety)
+                updated_donation = self.donationModel.findByOrderId(donation.get('order_id'))
+                if updated_donation:
+                    donation = updated_donation
                 
                 # Update log_dana_transaction table (so History page updates)
                 logModel = LogDanaTransactionModel()
