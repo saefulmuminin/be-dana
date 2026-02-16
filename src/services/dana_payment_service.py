@@ -213,9 +213,9 @@ class DanaPaymentService:
                         "orderTitle": f"Donasi dari {orderData.get('nama_lengkap', 'Hamba Allah')}"[:64]
                     },
                     "envInfo": {
-                        "sourcePlatform": "IPG",
-                        "terminalType": "APP",
-                        "orderTerminalType": "APP"
+                        "sourcePlatform": Config.DANA_SOURCE_PLATFORM,
+                        "terminalType": Config.DANA_TERMINAL_TYPE,
+                        "orderTerminalType": Config.DANA_ORDER_TERMINAL_TYPE
                     }
                 }
             }
@@ -1461,8 +1461,19 @@ class DanaPaymentService:
             try:
                 # Normalize status
                 normalizedStatus = status.upper() if status else 'PENDING'
-                print(f"[WEBHOOK] Updating donation status to: {normalizedStatus}")
-                
+
+                # Map DANA status to readable format for logging
+                status_display_map = {
+                    'SUCCESS': 'SUCCESS (berhasil)',
+                    '00': 'SUCCESS (berhasil)',
+                    'PAID': 'PAID (berhasil)',
+                    'FAILED': 'FAILED (gagal)',
+                    'CANCELLED': 'CANCELLED (dibatalkan)',
+                    'PENDING': 'PENDING (menunggu)'
+                }
+                display_status = status_display_map.get(normalizedStatus, normalizedStatus)
+                print(f"[WEBHOOK] Updating donation status: {normalizedStatus} → {display_status}")
+
                 # Update donation table (adm_campaign_donasi)
                 self.donationModel.updateDanaStatusRef(
                     donation['order_id'],
@@ -1953,8 +1964,8 @@ class DanaPaymentService:
             
             if save_result.get('success'):
                 no_transaksi = save_result.get('no_transaksi', '')
-                print(f"[SIMBA] Transaction saved successfully. No: {no_transaksi}")
-                
+                print(f"[SIMBA] ✅ Transaction synced to SIMBA. Transaksi No: {no_transaksi}")
+
                 # Update donation dengan no_transaksi SIMBA
                 try:
                     conn = self.db.getConnection()

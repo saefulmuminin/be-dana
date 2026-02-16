@@ -74,6 +74,23 @@ class Config:
     DANA_ORIGIN = os.getenv("DANA_ORIGIN", "https://be-dana.vercel.app")
 
     # ==========================================================================
+    # DANA PAYMENT FLOW CONFIGURATION
+    # ==========================================================================
+    # envInfo Configuration - Menentukan bagaimana link pembayaran dibuka
+    #
+    # Options:
+    # 1. "APP" (default) - Langsung di Mini App (in-app payment dengan my.tradePay)
+    # 2. "WEB" - Redirect ke browser eksternal
+    # 3. "H5" - Buka webview HTML5 di dalam DANA
+    #
+    # sourcePlatform Options: "IPG", "DANA", "MERCHANT"
+    # terminalType Options: "APP", "WEB", "H5", "SYSTEM"
+    #
+    DANA_SOURCE_PLATFORM = os.getenv("DANA_SOURCE_PLATFORM", "IPG")
+    DANA_TERMINAL_TYPE = os.getenv("DANA_TERMINAL_TYPE", "APP")
+    DANA_ORDER_TERMINAL_TYPE = os.getenv("DANA_ORDER_TERMINAL_TYPE", "APP")
+
+    # ==========================================================================
     # CALLBACK URLS (Input ini ke Dashboard DANA)
     # ==========================================================================
     # URL ini yang harus dimasukkan ke gambar "Finish Payment URL" dsb.
