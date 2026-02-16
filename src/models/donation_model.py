@@ -188,11 +188,16 @@ class DonationModel(BaseModel):
                         dana_paid_at = %s, updated_date = %s
                     WHERE order_id = %s
                 """
+                print(f"[DB] Updating status: {orderId} -> dana_status={danaStatus}, status={db_status}")
                 cursor.execute(sql, (referenceNo, danaStatus, db_status, dana_paid_at, datetime.now(), orderId))
+                rows_affected = cursor.rowcount
                 self.conn.commit()
-                return cursor.rowcount > 0
+                print(f"[DB] ✅ Status updated successfully. Rows affected: {rows_affected}")
+                return rows_affected > 0
         except Exception as e:
-            print(f"[DB] Update DANA status failed: {e}")
+            print(f"[DB] ❌ Update DANA status failed: {e}")
+            import traceback
+            traceback.print_exc()
             self.conn.rollback()
             return False
 
