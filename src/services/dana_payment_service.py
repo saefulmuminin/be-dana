@@ -1800,10 +1800,15 @@ class DanaPaymentService:
             muzaki = None
 
             if muzaki_id:
-                # Muzaki already exists
+                # Try to find existing muzaki
                 muzaki = muzakiModel.findById(muzaki_id)
-                print(f"[SIMBA] Existing muzaki found: {muzaki_id}")
-            else:
+                if muzaki:
+                    print(f"[SIMBA] Existing muzaki found: {muzaki_id}")
+                else:
+                    print(f"[SIMBA] ⚠️ Muzaki ID {muzaki_id} not found in database! Will try to find/create.")
+                    muzaki_id = None  # Reset to trigger search/create flow
+
+            if not muzaki_id:
                 # Try to find existing muzaki by email or phone
                 email = donation.get('email', '')
                 
@@ -1893,8 +1898,12 @@ class DanaPaymentService:
                         return
 
             # Step 2: Register muzaki to SIMBA if no NPWZ
+            if not muzaki:
+                print(f"[SIMBA] ❌ ERROR: No muzaki found/created. Cannot proceed with SIMBA sync.")
+                return
+
             npwz = muzaki.get('npwz') if muzaki else None
-            
+
             if not npwz or npwz == '' or npwz == '0':
                 print(f"[SIMBA] Registering muzaki to SIMBA")
                 print(f"[SIMBA] Muzaki info - Nama: {muzaki.get('nama')}, Email: {muzaki.get('email')}, Phone: {muzaki.get('handphone')}")
