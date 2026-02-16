@@ -56,6 +56,7 @@ class DonationModel(BaseModel):
                  donasi, donasi_net, total_bayar, hamba_allah, status, tgl_donasi,
                  is_active, is_delete, created_by, created_date)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
             """
             cursor.execute(sql, (
                 uuid_val,
@@ -87,7 +88,8 @@ class DonationModel(BaseModel):
                 datetime.now()
             ))
             self.conn.commit()
-            return cursor.lastrowid
+            result = cursor.fetchone()
+            return result['id'] if result else None
 
     def findByOrderId(self, orderId):
         """

@@ -25,6 +25,7 @@ class MuzakiModel(BaseModel):
                  tgl_daftar, handphone, email, alamat, tgl_lahir, jenis_kelamin,
                  is_active, is_delete, created_by, created_date)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
             """
             cursor.execute(sql, (
                 data.get('tipe', 'perorangan'),
@@ -48,7 +49,8 @@ class MuzakiModel(BaseModel):
                 datetime.now()
             ))
             self.conn.commit()
-            return cursor.lastrowid
+            result = cursor.fetchone()
+            return result['id'] if result else None
 
     def findById(self, id):
         """
