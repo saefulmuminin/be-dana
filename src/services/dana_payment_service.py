@@ -2063,12 +2063,34 @@ class DanaPaymentService:
                 print(f"[SIMBA] ✅ Transaction synced to SIMBA. Transaksi No: {no_transaksi}")
 
                 # Update donation dengan no_transaksi SIMBA
+                # Update donation dengan no_transaksi SIMBA dan info waktu
                 try:
                     conn = self.db.getConnection()
                     with conn.cursor() as cursor:
-                        sql = "UPDATE adm_campaign_donasi SET no_transaksi = %s WHERE order_id = %s"
-                        cursor.execute(sql, (no_transaksi, donation['order_id']))
+                        # Fix: Populate tanggal, waktu, and transaksi_id as requested
+                        current_dt = datetime.now()
+                        tanggal_str = current_dt.strftime('%Y-%m-%d')
+                        waktu_str = current_dt.strftime('%H:%M:%S')
+                        
+                        sql = """
+                            UPDATE adm_campaign_donasi 
+                            SET no_transaksi = %s, 
+                                transaksi_id = %s,
+                                tanggal = %s,
+                                waktu = %s,
+                                updated_date = %s
+                            WHERE order_id = %s
+                        """
+                        cursor.execute(sql, (
+                            no_transaksi, 
+                            no_transaksi, # Use SIMBA Id as transaksi_id per request context
+                            tanggal_str, 
+                            waktu_str, 
+                            current_dt,
+                            donation['order_id']
+                        ))
                         conn.commit()
+                        print(f"[SIMBA] Updated transaction info: No={no_transaksi}, Date={tanggal_str}, Time={waktu_str}")
                 except Exception as updateErr:
                     print(f"[SIMBA] Failed to update no_transaksi: {updateErr}")
             else:
