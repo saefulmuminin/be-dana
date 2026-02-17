@@ -115,8 +115,8 @@ class SimbaIntegration:
         # Debug: print config keys
         print(f"[SIMBA] Config keys: {list(config.keys()) if config else 'None'}")
 
-        # Clean account string (remove dots, limit length)
-        def cleanAccount(acc, length=12):
+        # Clean account string (remove dots, limit to 8 digits for SIMBA)
+        def cleanAccount(acc, length=8):
             if not acc:
                 return ''
             cleaned = str(acc).replace('.', '')[:length]
@@ -323,7 +323,23 @@ class SimbaIntegration:
             if not via:
                 via = account_info['akun']
 
+            # Validate and clean field lengths to match SIMBA requirements
+            program = self._cleanProgramString(program, 9)  # Must be 9 digits
+            via = self._cleanAccountString(via, 8)  # Must be 8 digits
+            account_info['akun'] = self._cleanAccountString(account_info['akun'], 8)  # Must be 8 digits
+
             print(f"[SIMBA] Final mapping - Account: {account_info['akun']}, Program: {program}, Via: {via}")
+
+            # Final validation
+            if len(program) != 9:
+                print(f"[SIMBA] ⚠️  Program code invalid: '{program}' (expected 9 digits, got {len(program)})")
+                return {'success': False, 'error': f'Program code must be 9 digits, got {len(program)}'}
+            if len(via) != 8:
+                print(f"[SIMBA] ⚠️  Via code invalid: '{via}' (expected 8 digits, got {len(via)})")
+                return {'success': False, 'error': f'Via code must be 8 digits, got {len(via)}'}
+            if len(account_info['akun']) != 8:
+                print(f"[SIMBA] ⚠️  Account code invalid: '{account_info['akun']}' (expected 8 digits, got {len(account_info['akun'])})")
+                return {'success': False, 'error': f'Account code must be 8 digits, got {len(account_info["akun"])}'}
 
             keterangan = f"payment{order_id}"
 
@@ -396,14 +412,14 @@ class SimbaIntegration:
             self._logApiCall(url, 'SAVE_TRANSACTION', payload, 0, None, error=str(e))
             return {'success': False, 'error': str(e)}
 
-    def _cleanAccountString(self, acc, length=12):
-        """Clean account string: remove dots, limit length"""
+    def _cleanAccountString(self, acc, length=8):
+        """Clean account string: remove dots, limit to 8 digits for SIMBA"""
         if not acc:
             return ''
         return acc.replace('.', '')[:length]
 
-    def _cleanProgramString(self, prog, length=14):
-        """Clean program string: digits only, limit length"""
+    def _cleanProgramString(self, prog, length=9):
+        """Clean program string: digits only, limit to 9 digits for SIMBA"""
         if not prog:
             return ''
         return ''.join(filter(str.isdigit, prog))[:length]
@@ -412,16 +428,16 @@ class SimbaIntegration:
         """
         Map kategori campaign ke kode program
 
-        Kode Program:
-        - Maal & Infak Tidak Terikat: 1.1.01.00.00
-        - Infaq Terikat, Fitrah, Fidyah: 1.2.01.00.00
+        Kode Program (9 digits):
+        - Maal & Infak Tidak Terikat: 110100000 (1.1.01.00.00)
+        - Infaq Terikat, Fitrah, Fidyah: 120100000 (1.2.01.00.00)
 
         Args:
             kategori: Kategori dari campaign (e.g., 'Zakat Fitrah', 'Fidyah', 'Infak Terikat')
             tipe: Tipe dari campaign ('zakat' atau 'infak')
 
         Returns:
-            str: Kode program (tanpa titik, max 10 digit)
+            str: Kode program (9 digits exactly)
         """
         kategori_lower = kategori.lower().strip() if kategori else ''
         tipe_lower = tipe.lower().strip() if tipe else 'infak'
@@ -432,10 +448,10 @@ class SimbaIntegration:
         # Check jika kategori termasuk program terikat
         for keyword in program_terikat:
             if keyword in kategori_lower:
-                return '1201000000'  # 1.2.01.00.00 tanpa titik
+                return '120100000'  # 9 digits: 1.2.01.00.00
 
         # Default: Maal & Infak Tidak Terikat
-        return '1101000000'  # 1.1.01.00.00 tanpa titik
+        return '110100000'  # 9 digits: 1.1.01.00.00
 
     def getKodeAkunByKategori(self, kategori, tipe='infak', coa_from_campaign=None):
         """
@@ -471,21 +487,21 @@ class SimbaIntegration:
 
         # Mapping berdasarkan kategori
         if 'fitrah' in kategori_lower or 'zakat fitrah' in kategori_lower:
-            return {'akun': '410201011', 'kadar': '0'}  # 4.1.02.01.01
+            return {'akun': '41020101', 'kadar': '0'}  # 4.1.02.01.01 (8 digit)
 
         elif 'fidyah' in kategori_lower:
-            return {'akun': '420106011', 'kadar': '0'}  # 4.2.01.06.01
+            return {'akun': '42010601', 'kadar': '0'}  # 4.2.01.06.01 (8 digit)
 
         elif 'infak terikat' in kategori_lower or 'infaq terikat' in kategori_lower:
-            return {'akun': '420101011', 'kadar': '0'}  # 4.2.01.01.01
+            return {'akun': '42010101', 'kadar': '0'}  # 4.2.01.01.01 (8 digit)
 
         elif 'infak tidak terikat' in kategori_lower or 'infaq tidak terikat' in kategori_lower:
-            return {'akun': '420201011', 'kadar': '0'}  # 4.2.02.01.01
+            return {'akun': '42020101', 'kadar': '0'}  # 4.2.02.01.01 (8 digit)
 
         elif tipe_lower == 'zakat':
             # Default untuk zakat = Maal (Zakat Penghasilan)
-            return {'akun': '410202021', 'kadar': '2.5'}  # 4.1.02.02.01
+            return {'akun': '41020201', 'kadar': '2.5'}  # 4.1.02.02.01 (8 digit)
 
         else:
             # Default untuk infak = Infaq Tidak Terikat
-            return {'akun': '420201011', 'kadar': '0'}  # 4.2.02.01.01
+            return {'akun': '42020101', 'kadar': '0'}  # 4.2.02.01.01 (8 digit)
