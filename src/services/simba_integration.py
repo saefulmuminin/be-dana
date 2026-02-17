@@ -265,7 +265,7 @@ class SimbaIntegration:
             return {'success': False, 'error': str(e)}
 
     def saveTransaction(self, npwz, amount, tanggal, tipe_zakat, order_id, program=None, via=None,
-                       campaign_kategori=None, campaign_tipe=None, campaign_coa=None):
+                       campaign_kategori=None, campaign_tipe=None, campaign_coa=None, campaign_name=None):
         """
         Simpan transaksi ke SIMBA
 
@@ -280,6 +280,7 @@ class SimbaIntegration:
             campaign_kategori: Kategori dari campaign (untuk mapping akun & program)
             campaign_tipe: Tipe dari campaign ('zakat' atau 'infak')
             campaign_coa: COA dari campaign (coa_zakat atau coa_infak)
+            campaign_name: Nama campaign (fallback jika kategori = 'Lainnya')
 
         Returns:
             {'success': True, 'no_transaksi': '...'} atau {'success': False, 'error': '...'}
@@ -289,20 +290,22 @@ class SimbaIntegration:
 
             # Determine account_info and program based on campaign data (NEW)
             if campaign_kategori:
-                print(f"[SIMBA] Using campaign-based mapping: kategori={campaign_kategori}, tipe={campaign_tipe}, coa={campaign_coa}")
+                print(f"[SIMBA] Using campaign-based mapping: name={campaign_name}, kategori={campaign_kategori}, tipe={campaign_tipe}, coa={campaign_coa}")
 
-                # Get account info from campaign kategori
+                # Get account info from campaign kategori (or name as fallback)
                 account_info = self.getKodeAkunByKategori(
                     kategori=campaign_kategori,
                     tipe=campaign_tipe or 'infak',
-                    coa_from_campaign=campaign_coa
+                    coa_from_campaign=campaign_coa,
+                    campaign_name=campaign_name  # NEW: Pass campaign name
                 )
 
-                # Get program code from campaign kategori
+                # Get program code from campaign kategori (or name as fallback)
                 if not program:
                     program_code = self.getKodeProgramByKategori(
                         kategori=campaign_kategori,
-                        tipe=campaign_tipe or 'infak'
+                        tipe=campaign_tipe or 'infak',
+                        campaign_name=campaign_name  # NEW: Pass campaign name
                     )
                     program = program_code
 
@@ -424,7 +427,7 @@ class SimbaIntegration:
             return ''
         return ''.join(filter(str.isdigit, prog))[:length]
 
-    def getKodeProgramByKategori(self, kategori, tipe='infak'):
+    def getKodeProgramByKategori(self, kategori, tipe='infak', campaign_name=None):
         """
         Map kategori campaign ke kode program
 
@@ -435,14 +438,16 @@ class SimbaIntegration:
         Args:
             kategori: Kategori dari campaign (e.g., 'Zakat Fitrah', 'Zakat Penghasilan', 'Fidyah')
             tipe: Tipe dari campaign ('zakat' atau 'infak')
+            campaign_name: Nama campaign (fallback jika kategori = 'Lainnya')
 
         Returns:
             str: Kode program (9 digits exactly)
         """
         kategori_lower = kategori.lower().strip() if kategori else ''
         tipe_lower = tipe.lower().strip() if tipe else 'infak'
+        name_lower = campaign_name.lower().strip() if campaign_name else ''
 
-        print(f"[SIMBA] getKodeProgramByKategori - Kategori: '{kategori}', Tipe: '{tipe}'")
+        print(f"[SIMBA] getKodeProgramByKategori - Kategori: '{kategori}', Name: '{campaign_name}', Tipe: '{tipe}'")
 
         # Mapping untuk kategori yang menggunakan program 1.2.01.00.00 (Infaq Terikat, Fitrah, Fidyah)
         program_terikat_keywords = [
@@ -458,14 +463,21 @@ class SimbaIntegration:
         # Check jika kategori termasuk program terikat
         for keyword in program_terikat_keywords:
             if keyword in kategori_lower:
-                print(f"[SIMBA] ✓ Matched '{keyword}' → Program: 120100000 (Terikat/Fitrah/Fidyah)")
+                print(f"[SIMBA] ✓ Matched kategori '{keyword}' → Program: 120100000 (Terikat/Fitrah/Fidyah)")
                 return '120100000'  # 9 digits: 1.2.01.00.00
+
+        # FALLBACK: Check campaign name jika kategori = "Lainnya"
+        if kategori_lower == 'lainnya' or not kategori_lower:
+            for keyword in program_terikat_keywords:
+                if keyword in name_lower:
+                    print(f"[SIMBA] ✓ Matched name '{keyword}' (fallback) → Program: 120100000 (Terikat/Fitrah/Fidyah)")
+                    return '120100000'  # 9 digits: 1.2.01.00.00
 
         # Default: Maal & Infak Tidak Terikat (including Zakat Penghasilan/Maal)
         print(f"[SIMBA] ✓ Default match → Program: 110100000 (Maal/Infak Tidak Terikat)")
         return '110100000'  # 9 digits: 1.1.01.00.00
 
-    def getKodeAkunByKategori(self, kategori, tipe='infak', coa_from_campaign=None):
+    def getKodeAkunByKategori(self, kategori, tipe='infak', coa_from_campaign=None, campaign_name=None):
         """
         Map kategori campaign ke kode akun
 
@@ -480,11 +492,12 @@ class SimbaIntegration:
             kategori: Kategori dari campaign
             tipe: Tipe dari campaign ('zakat' atau 'infak')
             coa_from_campaign: COA yang sudah tersimpan di campaign (coa_zakat atau coa_infak)
+            campaign_name: Nama campaign (fallback jika kategori = 'Lainnya')
 
         Returns:
             dict: {'akun': '...', 'kadar': '...'}
         """
-        print(f"[SIMBA] getKodeAkunByKategori - Kategori: '{kategori}', Tipe: '{tipe}', COA: '{coa_from_campaign}'")
+        print(f"[SIMBA] getKodeAkunByKategori - Kategori: '{kategori}', Name: '{campaign_name}', Tipe: '{tipe}', COA: '{coa_from_campaign}'")
 
         # Prioritas 1: Gunakan COA dari campaign jika ada
         if coa_from_campaign:
@@ -498,30 +511,58 @@ class SimbaIntegration:
         # Prioritas 2: Map berdasarkan kategori
         kategori_lower = kategori.lower().strip() if kategori else ''
         tipe_lower = tipe.lower().strip() if tipe else 'infak'
+        name_lower = campaign_name.lower().strip() if campaign_name else ''
 
         # Mapping berdasarkan kategori (URUTAN PENTING: specific keywords dulu!)
 
         # 1. Zakat Fitrah
         if 'fitrah' in kategori_lower:
-            print(f"[SIMBA] ✓ Matched 'fitrah' → Akun: 41020101 (Fitrah), Kadar: 0")
+            print(f"[SIMBA] ✓ Matched kategori 'fitrah' → Akun: 41020101 (Fitrah), Kadar: 0")
             return {'akun': '41020101', 'kadar': '0'}  # 4.1.02.01.01
 
         # 2. Fidyah
         elif 'fidyah' in kategori_lower:
-            print(f"[SIMBA] ✓ Matched 'fidyah' → Akun: 42010601 (Fidyah), Kadar: 0")
+            print(f"[SIMBA] ✓ Matched kategori 'fidyah' → Akun: 42010601 (Fidyah), Kadar: 0")
             return {'akun': '42010601', 'kadar': '0'}  # 4.2.01.06.01
 
         # 3. Infaq/Infak Terikat
         elif 'infak terikat' in kategori_lower or 'infaq terikat' in kategori_lower or 'sedekah terikat' in kategori_lower:
-            print(f"[SIMBA] ✓ Matched 'terikat' → Akun: 42010101 (Infaq Terikat), Kadar: 0")
+            print(f"[SIMBA] ✓ Matched kategori 'terikat' → Akun: 42010101 (Infaq Terikat), Kadar: 0")
             return {'akun': '42010101', 'kadar': '0'}  # 4.2.01.01.01
 
         # 4. Infaq/Infak Tidak Terikat (explicit)
         elif 'infak tidak terikat' in kategori_lower or 'infaq tidak terikat' in kategori_lower or 'sedekah tidak terikat' in kategori_lower:
-            print(f"[SIMBA] ✓ Matched 'tidak terikat' → Akun: 42020101 (Infaq Tidak Terikat), Kadar: 0")
+            print(f"[SIMBA] ✓ Matched kategori 'tidak terikat' → Akun: 42020101 (Infaq Tidak Terikat), Kadar: 0")
             return {'akun': '42020101', 'kadar': '0'}  # 4.2.02.01.01
 
-        # 5. Zakat (Maal/Penghasilan/Lainnya) - fallback untuk semua zakat selain Fitrah
+        # FALLBACK: Check campaign name jika kategori = "Lainnya"
+        elif kategori_lower == 'lainnya' or not kategori_lower:
+            # Check fitrah in name
+            if 'fitrah' in name_lower:
+                print(f"[SIMBA] ✓ Matched name 'fitrah' (fallback) → Akun: 41020101 (Fitrah), Kadar: 0")
+                return {'akun': '41020101', 'kadar': '0'}  # 4.1.02.01.01
+
+            # Check fidyah in name
+            elif 'fidyah' in name_lower:
+                print(f"[SIMBA] ✓ Matched name 'fidyah' (fallback) → Akun: 42010601 (Fidyah), Kadar: 0")
+                return {'akun': '42010601', 'kadar': '0'}  # 4.2.01.06.01
+
+            # Check terikat in name
+            elif 'terikat' in name_lower:
+                print(f"[SIMBA] ✓ Matched name 'terikat' (fallback) → Akun: 42010101 (Infaq Terikat), Kadar: 0")
+                return {'akun': '42010101', 'kadar': '0'}  # 4.2.01.01.01
+
+            # If tipe = zakat but no specific match, use Maal
+            elif tipe_lower == 'zakat':
+                print(f"[SIMBA] ✓ Fallback Zakat (Maal/Penghasilan) → Akun: 41020201, Kadar: 2.5")
+                return {'akun': '41020201', 'kadar': '2.5'}  # 4.1.02.02.01
+
+            # Default infak
+            else:
+                print(f"[SIMBA] ✓ Fallback Infak (Tidak Terikat) → Akun: 42020101, Kadar: 0")
+                return {'akun': '42020101', 'kadar': '0'}  # 4.2.02.01.01
+
+        # 5. Zakat (Maal/Penghasilan) - fallback untuk semua zakat selain Fitrah
         elif tipe_lower == 'zakat':
             print(f"[SIMBA] ✓ Default Zakat (Maal/Penghasilan) → Akun: 41020201, Kadar: 2.5")
             return {'akun': '41020201', 'kadar': '2.5'}  # 4.1.02.02.01

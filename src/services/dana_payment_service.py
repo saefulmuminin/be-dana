@@ -2282,6 +2282,7 @@ class DanaPaymentService:
             campaign_kategori = None
             campaign_tipe = None
             campaign_coa = None
+            campaign_name = None
 
             campaign_id = donation.get('campaign_id')
             if campaign_id:
@@ -2293,6 +2294,7 @@ class DanaPaymentService:
                     if campaign:
                         campaign_kategori = campaign.get('kategori')
                         campaign_tipe = campaign.get('tipe')
+                        campaign_name = campaign.get('name')  # NEW: Get campaign name
 
                         # Get appropriate COA based on tipe
                         if campaign_tipe == 'zakat':
@@ -2300,7 +2302,7 @@ class DanaPaymentService:
                         else:
                             campaign_coa = campaign.get('coa_infak')
 
-                        print(f"[SIMBA] Campaign data found - Kategori: {campaign_kategori}, Tipe: {campaign_tipe}, COA: {campaign_coa}")
+                        print(f"[SIMBA] Campaign data found - Name: {campaign_name}, Kategori: {campaign_kategori}, Tipe: {campaign_tipe}, COA: {campaign_coa}")
                     else:
                         print(f"[SIMBA] Campaign {campaign_id} not found, using legacy mapping")
 
@@ -2321,7 +2323,8 @@ class DanaPaymentService:
                 order_id=donation.get('order_id', ''),
                 campaign_kategori=campaign_kategori,  # NEW
                 campaign_tipe=campaign_tipe,  # NEW
-                campaign_coa=campaign_coa  # NEW
+                campaign_coa=campaign_coa,  # NEW
+                campaign_name=campaign_name  # NEW: Pass campaign name
             )
             
             if save_result.get('success'):
