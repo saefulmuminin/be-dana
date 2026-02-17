@@ -2248,13 +2248,13 @@ class DanaPaymentService:
 
             # Step 3: Save transaction to SIMBA
             print(f"[SIMBA] Saving transaction to SIMBA")
-            
+
             # Re-enforce status 'berhasil' just in case
             if donation.get('status') != 'berhasil':
                  print(f"[SIMBA] Re-enforcing status 'berhasil' for order {donation['order_id']}")
                  # We use 'SUCCESS' which maps to 'berhasil'
                  self.donationModel.updateDanaStatusRef(donation['order_id'], donation.get('dana_reference_no'), 'SUCCESS')
-            
+
             # Format tanggal untuk SIMBA (dd/mm/yyyy)
             tgl_donasi = donation.get('tgl_donasi')
             if isinstance(tgl_donasi, str):
@@ -2264,26 +2264,64 @@ class DanaPaymentService:
                     tgl_donasi = datetime.now()
             elif not tgl_donasi:
                 tgl_donasi = datetime.now()
-            
+
             tanggal_simba = tgl_donasi.strftime('%d/%m/%Y')
-            
-            # Get tipe zakat
+
+            # Get tipe zakat (legacy support)
             tipe_zakat = donation.get('tipe_zakat', 'infak')
-            
-            # Map tipe_zakat to readable format for SIMBA
+
+            # Map tipe_zakat to readable format for SIMBA (legacy)
             tipe_zakat_map = {
                 'zakat': 'zakat penghasilan',  # Default zakat
                 'infak': 'infak',
                 'fidyah': 'fidyah'
             }
             tipe_zakat_simba = tipe_zakat_map.get(tipe_zakat.lower(), 'infak')
-            
+
+            # NEW: Get campaign data for proper kode program and kode akun mapping
+            campaign_kategori = None
+            campaign_tipe = None
+            campaign_coa = None
+
+            campaign_id = donation.get('campaign_id')
+            if campaign_id:
+                try:
+                    from src.models.campaign_model import CampaignModel
+                    campaignModel = CampaignModel()
+                    campaign = campaignModel.findById(campaign_id)
+
+                    if campaign:
+                        campaign_kategori = campaign.get('kategori')
+                        campaign_tipe = campaign.get('tipe')
+
+                        # Get appropriate COA based on tipe
+                        if campaign_tipe == 'zakat':
+                            campaign_coa = campaign.get('coa_zakat')
+                        else:
+                            campaign_coa = campaign.get('coa_infak')
+
+                        print(f"[SIMBA] Campaign data found - Kategori: {campaign_kategori}, Tipe: {campaign_tipe}, COA: {campaign_coa}")
+                    else:
+                        print(f"[SIMBA] Campaign {campaign_id} not found, using legacy mapping")
+
+                    # Close campaign model connection
+                    campaignModel.conn.close()
+                except Exception as campaignErr:
+                    print(f"[SIMBA] Error fetching campaign data: {campaignErr}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                print(f"[SIMBA] No campaign_id in donation, using legacy mapping")
+
             save_result = simba.saveTransaction(
                 npwz=npwz,
                 amount=int(donation.get('nominal', 0)),
                 tanggal=tanggal_simba,
-                tipe_zakat=tipe_zakat_simba,
-                order_id=donation.get('order_id', '')
+                tipe_zakat=tipe_zakat_simba,  # Legacy support
+                order_id=donation.get('order_id', ''),
+                campaign_kategori=campaign_kategori,  # NEW
+                campaign_tipe=campaign_tipe,  # NEW
+                campaign_coa=campaign_coa  # NEW
             )
             
             if save_result.get('success'):

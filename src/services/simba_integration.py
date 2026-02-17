@@ -264,38 +264,66 @@ class SimbaIntegration:
             self._logApiCall(url, 'REGISTER_MUZAKI', payload, 0, None, error=str(e))
             return {'success': False, 'error': str(e)}
 
-    def saveTransaction(self, npwz, amount, tanggal, tipe_zakat, order_id, program=None, via=None):
+    def saveTransaction(self, npwz, amount, tanggal, tipe_zakat, order_id, program=None, via=None,
+                       campaign_kategori=None, campaign_tipe=None, campaign_coa=None):
         """
         Simpan transaksi ke SIMBA
-        
+
         Args:
             npwz: NPWZ muzaki
             amount: Jumlah donasi
             tanggal: Tanggal transaksi (format: dd/mm/yyyy)
-            tipe_zakat: Jenis zakat (untuk mapping akun)
+            tipe_zakat: Jenis zakat (untuk mapping akun - legacy support)
             order_id: Order ID untuk keterangan
-            program: Program code (optional, akan fetch dari config)
-            via: Via code (optional, akan fetch dari config)
-        
+            program: Program code (optional, akan di-generate dari campaign_kategori)
+            via: Via code (optional, sama dengan akun)
+            campaign_kategori: Kategori dari campaign (untuk mapping akun & program)
+            campaign_tipe: Tipe dari campaign ('zakat' atau 'infak')
+            campaign_coa: COA dari campaign (coa_zakat atau coa_infak)
+
         Returns:
             {'success': True, 'no_transaksi': '...'} atau {'success': False, 'error': '...'}
         """
         try:
             url = f"{self.base_url}/api/ajax_transaksi_simpan"
 
-            # Use fallback account mapping directly (skip payment gateway config)
-            account_info = self._getFallbackAccountMapping(tipe_zakat)
+            # Determine account_info and program based on campaign data (NEW)
+            if campaign_kategori:
+                print(f"[SIMBA] Using campaign-based mapping: kategori={campaign_kategori}, tipe={campaign_tipe}, coa={campaign_coa}")
+
+                # Get account info from campaign kategori
+                account_info = self.getKodeAkunByKategori(
+                    kategori=campaign_kategori,
+                    tipe=campaign_tipe or 'infak',
+                    coa_from_campaign=campaign_coa
+                )
+
+                # Get program code from campaign kategori
+                if not program:
+                    program_code = self.getKodeProgramByKategori(
+                        kategori=campaign_kategori,
+                        tipe=campaign_tipe or 'infak'
+                    )
+                    program = program_code
+
+                print(f"[SIMBA] Campaign mapping result - Account: {account_info['akun']}, Program: {program}")
+            else:
+                # Fallback to legacy mapping (OLD)
+                print(f"[SIMBA] Using legacy mapping for tipe_zakat: {tipe_zakat}")
+                account_info = self._getFallbackAccountMapping(tipe_zakat)
+
+                if not program:
+                    program = Config.SIMBA_PROGRAM or '113010000'  # Default program
+
             if not account_info or not account_info.get('akun'):
-                print(f"[SIMBA] No account mapping found for {tipe_zakat}")
+                print(f"[SIMBA] No account mapping found")
                 return {'success': False, 'error': 'No account mapping'}
 
-            # Use fallback values for program and via (skip config fetch)
-            if not program:
-                program = Config.SIMBA_PROGRAM or '113010000'  # Default program
+            # Use account as via (kode_akun)
             if not via:
-                via = Config.SIMBA_VIA or '11010101'  # Default via
-            
-            print(f"[SIMBA] Using account: {account_info['akun']}, program: {program}, via: {via}")
+                via = account_info['akun']
+
+            print(f"[SIMBA] Final mapping - Account: {account_info['akun']}, Program: {program}, Via: {via}")
 
             keterangan = f"payment{order_id}"
 
@@ -379,3 +407,85 @@ class SimbaIntegration:
         if not prog:
             return ''
         return ''.join(filter(str.isdigit, prog))[:length]
+
+    def getKodeProgramByKategori(self, kategori, tipe='infak'):
+        """
+        Map kategori campaign ke kode program
+
+        Kode Program:
+        - Maal & Infak Tidak Terikat: 1.1.01.00.00
+        - Infaq Terikat, Fitrah, Fidyah: 1.2.01.00.00
+
+        Args:
+            kategori: Kategori dari campaign (e.g., 'Zakat Fitrah', 'Fidyah', 'Infak Terikat')
+            tipe: Tipe dari campaign ('zakat' atau 'infak')
+
+        Returns:
+            str: Kode program (tanpa titik, max 10 digit)
+        """
+        kategori_lower = kategori.lower().strip() if kategori else ''
+        tipe_lower = tipe.lower().strip() if tipe else 'infak'
+
+        # Mapping untuk kategori yang menggunakan program 1.2.01.00.00
+        program_terikat = ['fitrah', 'zakat fitrah', 'fidyah', 'infak terikat', 'infaq terikat']
+
+        # Check jika kategori termasuk program terikat
+        for keyword in program_terikat:
+            if keyword in kategori_lower:
+                return '1201000000'  # 1.2.01.00.00 tanpa titik
+
+        # Default: Maal & Infak Tidak Terikat
+        return '1101000000'  # 1.1.01.00.00 tanpa titik
+
+    def getKodeAkunByKategori(self, kategori, tipe='infak', coa_from_campaign=None):
+        """
+        Map kategori campaign ke kode akun
+
+        Kode Akun:
+        - Maal (Zakat Penghasilan): 4.1.02.02.01
+        - Fitrah: 4.1.02.01.01
+        - Fidyah: 4.2.01.06.01
+        - Infaq Sedekah Terikat: 4.2.01.01.01
+        - Infaq Sedekah Tidak Terikat: 4.2.02.01.01
+
+        Args:
+            kategori: Kategori dari campaign
+            tipe: Tipe dari campaign ('zakat' atau 'infak')
+            coa_from_campaign: COA yang sudah tersimpan di campaign (coa_zakat atau coa_infak)
+
+        Returns:
+            dict: {'akun': '...', 'kadar': '...'}
+        """
+        # Prioritas 1: Gunakan COA dari campaign jika ada
+        if coa_from_campaign:
+            cleaned_coa = self._cleanAccountString(coa_from_campaign)
+            if cleaned_coa:
+                # Tentukan kadar berdasarkan tipe
+                kadar = '2.5' if tipe.lower() == 'zakat' else '0'
+                print(f"[SIMBA] Using COA from campaign: {coa_from_campaign} → {cleaned_coa}")
+                return {'akun': cleaned_coa, 'kadar': kadar}
+
+        # Prioritas 2: Map berdasarkan kategori
+        kategori_lower = kategori.lower().strip() if kategori else ''
+        tipe_lower = tipe.lower().strip() if tipe else 'infak'
+
+        # Mapping berdasarkan kategori
+        if 'fitrah' in kategori_lower or 'zakat fitrah' in kategori_lower:
+            return {'akun': '410201011', 'kadar': '0'}  # 4.1.02.01.01
+
+        elif 'fidyah' in kategori_lower:
+            return {'akun': '420106011', 'kadar': '0'}  # 4.2.01.06.01
+
+        elif 'infak terikat' in kategori_lower or 'infaq terikat' in kategori_lower:
+            return {'akun': '420101011', 'kadar': '0'}  # 4.2.01.01.01
+
+        elif 'infak tidak terikat' in kategori_lower or 'infaq tidak terikat' in kategori_lower:
+            return {'akun': '420201011', 'kadar': '0'}  # 4.2.02.01.01
+
+        elif tipe_lower == 'zakat':
+            # Default untuk zakat = Maal (Zakat Penghasilan)
+            return {'akun': '410202021', 'kadar': '2.5'}  # 4.1.02.02.01
+
+        else:
+            # Default untuk infak = Infaq Tidak Terikat
+            return {'akun': '420201011', 'kadar': '0'}  # 4.2.02.01.01
