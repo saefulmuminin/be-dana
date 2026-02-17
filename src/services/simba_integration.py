@@ -433,7 +433,7 @@ class SimbaIntegration:
         - Infaq Terikat, Fitrah, Fidyah: 120100000 (1.2.01.00.00)
 
         Args:
-            kategori: Kategori dari campaign (e.g., 'Zakat Fitrah', 'Fidyah', 'Infak Terikat')
+            kategori: Kategori dari campaign (e.g., 'Zakat Fitrah', 'Zakat Penghasilan', 'Fidyah')
             tipe: Tipe dari campaign ('zakat' atau 'infak')
 
         Returns:
@@ -442,27 +442,39 @@ class SimbaIntegration:
         kategori_lower = kategori.lower().strip() if kategori else ''
         tipe_lower = tipe.lower().strip() if tipe else 'infak'
 
-        # Mapping untuk kategori yang menggunakan program 1.2.01.00.00
-        program_terikat = ['fitrah', 'zakat fitrah', 'fidyah', 'infak terikat', 'infaq terikat']
+        print(f"[SIMBA] getKodeProgramByKategori - Kategori: '{kategori}', Tipe: '{tipe}'")
+
+        # Mapping untuk kategori yang menggunakan program 1.2.01.00.00 (Infaq Terikat, Fitrah, Fidyah)
+        program_terikat_keywords = [
+            'fitrah',
+            'zakat fitrah',
+            'fidyah',
+            'infak terikat',
+            'infaq terikat',
+            'infaq sedekah terikat',
+            'infak sedekah terikat'
+        ]
 
         # Check jika kategori termasuk program terikat
-        for keyword in program_terikat:
+        for keyword in program_terikat_keywords:
             if keyword in kategori_lower:
+                print(f"[SIMBA] ✓ Matched '{keyword}' → Program: 120100000 (Terikat/Fitrah/Fidyah)")
                 return '120100000'  # 9 digits: 1.2.01.00.00
 
-        # Default: Maal & Infak Tidak Terikat
+        # Default: Maal & Infak Tidak Terikat (including Zakat Penghasilan/Maal)
+        print(f"[SIMBA] ✓ Default match → Program: 110100000 (Maal/Infak Tidak Terikat)")
         return '110100000'  # 9 digits: 1.1.01.00.00
 
     def getKodeAkunByKategori(self, kategori, tipe='infak', coa_from_campaign=None):
         """
         Map kategori campaign ke kode akun
 
-        Kode Akun:
-        - Maal (Zakat Penghasilan): 4.1.02.02.01
-        - Fitrah: 4.1.02.01.01
-        - Fidyah: 4.2.01.06.01
-        - Infaq Sedekah Terikat: 4.2.01.01.01
-        - Infaq Sedekah Tidak Terikat: 4.2.02.01.01
+        Kode Akun (8 digits):
+        - Maal (Zakat Penghasilan): 41020201 (4.1.02.02.01)
+        - Fitrah: 41020101 (4.1.02.01.01)
+        - Fidyah: 42010601 (4.2.01.06.01)
+        - Infaq Sedekah Terikat: 42010101 (4.2.01.01.01)
+        - Infaq Sedekah Tidak Terikat: 42020101 (4.2.02.01.01)
 
         Args:
             kategori: Kategori dari campaign
@@ -472,36 +484,49 @@ class SimbaIntegration:
         Returns:
             dict: {'akun': '...', 'kadar': '...'}
         """
+        print(f"[SIMBA] getKodeAkunByKategori - Kategori: '{kategori}', Tipe: '{tipe}', COA: '{coa_from_campaign}'")
+
         # Prioritas 1: Gunakan COA dari campaign jika ada
         if coa_from_campaign:
             cleaned_coa = self._cleanAccountString(coa_from_campaign)
             if cleaned_coa:
                 # Tentukan kadar berdasarkan tipe
                 kadar = '2.5' if tipe.lower() == 'zakat' else '0'
-                print(f"[SIMBA] Using COA from campaign: {coa_from_campaign} → {cleaned_coa}")
+                print(f"[SIMBA] ✓ Using COA from campaign: {coa_from_campaign} → {cleaned_coa}")
                 return {'akun': cleaned_coa, 'kadar': kadar}
 
         # Prioritas 2: Map berdasarkan kategori
         kategori_lower = kategori.lower().strip() if kategori else ''
         tipe_lower = tipe.lower().strip() if tipe else 'infak'
 
-        # Mapping berdasarkan kategori
-        if 'fitrah' in kategori_lower or 'zakat fitrah' in kategori_lower:
-            return {'akun': '41020101', 'kadar': '0'}  # 4.1.02.01.01 (8 digit)
+        # Mapping berdasarkan kategori (URUTAN PENTING: specific keywords dulu!)
 
+        # 1. Zakat Fitrah
+        if 'fitrah' in kategori_lower:
+            print(f"[SIMBA] ✓ Matched 'fitrah' → Akun: 41020101 (Fitrah), Kadar: 0")
+            return {'akun': '41020101', 'kadar': '0'}  # 4.1.02.01.01
+
+        # 2. Fidyah
         elif 'fidyah' in kategori_lower:
-            return {'akun': '42010601', 'kadar': '0'}  # 4.2.01.06.01 (8 digit)
+            print(f"[SIMBA] ✓ Matched 'fidyah' → Akun: 42010601 (Fidyah), Kadar: 0")
+            return {'akun': '42010601', 'kadar': '0'}  # 4.2.01.06.01
 
-        elif 'infak terikat' in kategori_lower or 'infaq terikat' in kategori_lower:
-            return {'akun': '42010101', 'kadar': '0'}  # 4.2.01.01.01 (8 digit)
+        # 3. Infaq/Infak Terikat
+        elif 'infak terikat' in kategori_lower or 'infaq terikat' in kategori_lower or 'sedekah terikat' in kategori_lower:
+            print(f"[SIMBA] ✓ Matched 'terikat' → Akun: 42010101 (Infaq Terikat), Kadar: 0")
+            return {'akun': '42010101', 'kadar': '0'}  # 4.2.01.01.01
 
-        elif 'infak tidak terikat' in kategori_lower or 'infaq tidak terikat' in kategori_lower:
-            return {'akun': '42020101', 'kadar': '0'}  # 4.2.02.01.01 (8 digit)
+        # 4. Infaq/Infak Tidak Terikat (explicit)
+        elif 'infak tidak terikat' in kategori_lower or 'infaq tidak terikat' in kategori_lower or 'sedekah tidak terikat' in kategori_lower:
+            print(f"[SIMBA] ✓ Matched 'tidak terikat' → Akun: 42020101 (Infaq Tidak Terikat), Kadar: 0")
+            return {'akun': '42020101', 'kadar': '0'}  # 4.2.02.01.01
 
+        # 5. Zakat (Maal/Penghasilan/Lainnya) - fallback untuk semua zakat selain Fitrah
         elif tipe_lower == 'zakat':
-            # Default untuk zakat = Maal (Zakat Penghasilan)
-            return {'akun': '41020201', 'kadar': '2.5'}  # 4.1.02.02.01 (8 digit)
+            print(f"[SIMBA] ✓ Default Zakat (Maal/Penghasilan) → Akun: 41020201, Kadar: 2.5")
+            return {'akun': '41020201', 'kadar': '2.5'}  # 4.1.02.02.01
 
+        # 6. Default untuk infak = Infaq Tidak Terikat
         else:
-            # Default untuk infak = Infaq Tidak Terikat
-            return {'akun': '42020101', 'kadar': '0'}  # 4.2.02.01.01 (8 digit)
+            print(f"[SIMBA] ✓ Default Infak (Tidak Terikat) → Akun: 42020101, Kadar: 0")
+            return {'akun': '42020101', 'kadar': '0'}  # 4.2.02.01.01
