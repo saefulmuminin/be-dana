@@ -265,7 +265,7 @@ class SimbaIntegration:
             return {'success': False, 'error': str(e)}
 
     def saveTransaction(self, npwz, amount, tanggal, tipe_zakat, order_id, program=None, via=None,
-                       campaign_kategori=None, campaign_tipe=None, campaign_coa=None, campaign_name=None):
+                       campaign_kategori=None, campaign_tipe=None, campaign_coa=None, campaign_name=None, campaign_program_code=None):
         """
         Simpan transaksi ke SIMBA
 
@@ -281,6 +281,7 @@ class SimbaIntegration:
             campaign_tipe: Tipe dari campaign ('zakat' atau 'infak')
             campaign_coa: COA dari campaign (coa_zakat atau coa_infak)
             campaign_name: Nama campaign (fallback jika kategori = 'Lainnya')
+            campaign_program_code: Program code dari ref_dana_sosial (PRIORITAS TERTINGGI)
 
         Returns:
             {'success': True, 'no_transaksi': '...'} atau {'success': False, 'error': '...'}
@@ -290,7 +291,7 @@ class SimbaIntegration:
 
             # Determine account_info and program based on campaign data (NEW)
             if campaign_kategori:
-                print(f"[SIMBA] Using campaign-based mapping: name={campaign_name}, kategori={campaign_kategori}, tipe={campaign_tipe}, coa={campaign_coa}")
+                print(f"[SIMBA] Using campaign-based mapping: name={campaign_name}, kategori={campaign_kategori}, tipe={campaign_tipe}, coa={campaign_coa}, program_code={campaign_program_code}")
 
                 # Get account info from campaign kategori (or name as fallback)
                 account_info = self.getKodeAkunByKategori(
@@ -300,14 +301,20 @@ class SimbaIntegration:
                     campaign_name=campaign_name  # NEW: Pass campaign name
                 )
 
-                # Get program code from campaign kategori (or name as fallback)
+                # Get program code - PRIORITAS: campaign_program_code dari ref_dana_sosial
                 if not program:
-                    program_code = self.getKodeProgramByKategori(
-                        kategori=campaign_kategori,
-                        tipe=campaign_tipe or 'infak',
-                        campaign_name=campaign_name  # NEW: Pass campaign name
-                    )
-                    program = program_code
+                    if campaign_program_code:
+                        # PRIORITAS 1: Gunakan code dari ref_dana_sosial
+                        program = self._cleanProgramString(campaign_program_code, 9)
+                        print(f"[SIMBA] ✓ Using program code from ref_dana_sosial: {program}")
+                    else:
+                        # PRIORITAS 2: Generate dari kategori/name
+                        program_code = self.getKodeProgramByKategori(
+                            kategori=campaign_kategori,
+                            tipe=campaign_tipe or 'infak',
+                            campaign_name=campaign_name  # NEW: Pass campaign name
+                        )
+                        program = program_code
 
                 print(f"[SIMBA] Campaign mapping result - Account: {account_info['akun']}, Program: {program}")
             else:
