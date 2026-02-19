@@ -53,7 +53,7 @@ class DanaAuthService:
         self.muzakiModel = MuzakiModel()
         self.db = Database()
         self.jwtSecret = Config.JWT_SECRET
-        self.jwtExpireHours = Config.JWT_EXPIRE_HOURS
+
 
     # =========================================================================
     # DANA API - Signature & Token Exchange
@@ -850,8 +850,7 @@ class DanaAuthService:
             'user_id': user.get('id'),
             'email': user.get('email'),
             'muzaki_id': user.get('muzaki_id'),
-            'type': 'user',
-            'exp': datetime.utcnow() + timedelta(hours=self.jwtExpireHours)
+            'type': 'user'
         }
         return jwt.encode(payload, self.jwtSecret, algorithm='HS256')
 
@@ -870,8 +869,7 @@ class DanaAuthService:
                     return Response.error("User tidak ditemukan", 404)
 
                 return Response.success(data={
-                    "token": self._generateJwt(user),
-                    "expiresIn": self.jwtExpireHours * 3600
+                    "token": self._generateJwt(user)
                 }, message="Token berhasil di-refresh")
 
             except jwt.InvalidTokenError:

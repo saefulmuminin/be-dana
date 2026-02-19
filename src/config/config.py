@@ -29,7 +29,7 @@ class Config:
     # ==========================================================================
     SECRET_KEY = os.getenv('SECRET_KEY', 'default-secret-key-12345')
     JWT_SECRET = os.getenv('JWT_SECRET', 'default-jwt-secret-67890')
-    JWT_EXPIRE_HOURS = int(os.getenv('JWT_EXPIRE_HOURS', '24'))
+
 
     # Base URLs - Gunakan URL Vercel Anda di Environment Variables (APP_URL)
     APP_URL = os.getenv('APP_URL', 'http://localhost:5000')

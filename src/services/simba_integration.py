@@ -301,18 +301,38 @@ class SimbaIntegration:
                     campaign_name=campaign_name  # NEW: Pass campaign name
                 )
 
-                # Get program code - PRIORITAS: campaign_program_code dari ref_dana_sosial
+                # Get program code - HYBRID: Try ref_dana_sosial first, then fallback to auto-mapping
                 if not program:
+                    program_from_db = None
+
+                    # PRIORITAS 1: Coba gunakan code dari ref_dana_sosial (jika ada program_id)
                     if campaign_program_code:
-                        # PRIORITAS 1: Gunakan code dari ref_dana_sosial
-                        program = self._cleanProgramString(campaign_program_code, 9)
-                        print(f"[SIMBA] ✓ Using program code from ref_dana_sosial: {program}")
+                        cleaned_program = self._cleanProgramString(campaign_program_code, 9)
+
+                        # Validasi: code harus 9 digits dan format valid (110100000 atau 120100000)
+                        if len(cleaned_program) == 9 and cleaned_program.isdigit():
+                            # Check if it's a valid SIMBA program code (starts with 11 or 12)
+                            if cleaned_program.startswith('110') or cleaned_program.startswith('120'):
+                                program_from_db = cleaned_program
+                                print(f"[SIMBA] ✓ Using program code from ref_dana_sosial: {program_from_db}")
+                            else:
+                                print(f"[SIMBA] ⚠️  Program code from ref_dana_sosial '{cleaned_program}' is not valid SIMBA format (must start with 110 or 120)")
+                        else:
+                            print(f"[SIMBA] ⚠️  Program code from ref_dana_sosial '{cleaned_program}' is not 9 digits or not numeric")
+
+                    # PRIORITAS 2: Generate dari kategori/name (jika tidak ada program_id atau code invalid)
+                    if program_from_db:
+                        program = program_from_db
                     else:
-                        # PRIORITAS 2: Generate dari kategori/name
+                        if campaign_program_code:
+                            print(f"[SIMBA] → Fallback to auto-mapping karena program code dari DB tidak valid")
+                        else:
+                            print(f"[SIMBA] → Using auto-mapping karena tidak ada program_id")
+
                         program_code = self.getKodeProgramByKategori(
                             kategori=campaign_kategori,
                             tipe=campaign_tipe or 'infak',
-                            campaign_name=campaign_name  # NEW: Pass campaign name
+                            campaign_name=campaign_name
                         )
                         program = program_code
 

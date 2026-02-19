@@ -15,7 +15,7 @@ class AuthService:
         self.userModel = UserModel()
         self.muzakiModel = MuzakiModel()
         self.jwtSecret = getattr(Config, 'JWT_SECRET', 'your-secret-key-change-in-production')
-        self.jwtExpireHours = getattr(Config, 'JWT_EXPIRE_HOURS', 24)
+
 
     def seamlessLogin(self, data):
         """
@@ -109,7 +109,6 @@ class AuthService:
                 'email': email,
                 'muzaki_id': muzaki['id'] if muzaki else None,
                 'type': 'dana_user',
-                'exp': datetime.utcnow() + timedelta(hours=self.jwtExpireHours),
                 'iat': datetime.utcnow()
             }
             sessionToken = jwt.encode(jwtPayload, self.jwtSecret, algorithm='HS256')
@@ -117,7 +116,7 @@ class AuthService:
             return Response.success(data={
                 "token": sessionToken,
                 "token_type": "Bearer",
-                "expires_in": self.jwtExpireHours * 3600,
+
                 "user": {
                     "id": user['id'],
                     "email": email,
