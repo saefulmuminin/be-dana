@@ -34,6 +34,10 @@ import requests
 import hashlib
 import base64
 import hmac
+import logging
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 # RSA Signature imports
 try:
@@ -1101,40 +1105,47 @@ class DanaPaymentService:
         2. Fallback to local database (log_dana_transaction table)
         """
         try:
-            print(f"[HISTORY] Finding user {userId}")
+            logger.info(f"[HISTORY] Starting transaction history retrieval - userId={userId}, page={page}, pageSize={pageSize}")
+            
             user = self.userModel.findById(userId)
             if not user:
-                print(f"[HISTORY] User not found for ID {userId}")
+                logger.warning(f"[HISTORY] User not found for ID {userId}")
                 return Response.error("User not found", 404)
 
             email = user.get('email')
             accessToken = user.get('dana_access_token')
-            print(f"[HISTORY] User found. Email={email}, AccessToken={'Yes' if accessToken else 'No'}")
+            logger.info(f"[HISTORY] User found. Email={email}, AccessToken={'Yes' if accessToken else 'No'}")
 
             # Try DANA API first if user has access token
             if accessToken:
-                print(f"[HISTORY] Attempting DANA API...")
+                logger.info(f"[HISTORY] Attempting DANA API...")
                 result = self._callDanaTransactionHistoryApi(accessToken, page, pageSize)
 
                 if result['success']:
-                    print(f"[HISTORY] DANA API SUCCESS")
+                    logger.info(f"[HISTORY] ✅ DANA API SUCCESS - Returning DANA API data")
                     return Response.success(data=result['data'], message="History retrieved from DANA")
                 else:
-                    print(f"[HISTORY] DANA API FAILED: {result.get('error')}")
-                    print(f"[HISTORY] Falling back to local database...")
+                    logger.warning(f"[HISTORY] DANA API FAILED: {result.get('error')}")
+                    logger.info(f"[HISTORY] Falling back to local database...")
             else:
-                print(f"[HISTORY] No access token, using local database")
+                logger.info(f"[HISTORY] No access token, using local database")
 
             # Fallback to local database
+            logger.info(f"[HISTORY] Querying local database...")
             logModel = LogDanaTransactionModel()
             transactions = logModel.getByUserId(userId, page, pageSize)
 
             # If no transactions by userId, try by email
             if not transactions and email:
-                print(f"[HISTORY] No transactions by userId, trying email...")
+                logger.info(f"[HISTORY] No transactions by userId, trying email...")
                 transactions = logModel.getByEmail(email, page, pageSize)
 
-            print(f"[HISTORY] Found {len(transactions)} transactions in local DB")
+            logger.info(f"[HISTORY] Found {len(transactions)} transactions in local DB")
+            
+            # Debug: Print first record to see what fields are available
+            if transactions and len(transactions) > 0:
+                logger.debug(f"[HISTORY] First record keys: {list(transactions[0].keys())}")
+                logger.debug(f"[HISTORY] First record raw data: {json.dumps({k: str(v) for k, v in transactions[0].items()}, default=str)}")
 
             # Format response similar to DANA API format
             formatted_data = {
@@ -1143,17 +1154,25 @@ class DanaPaymentService:
                 "detailData": []
             }
 
-            for tx in transactions:
+            for idx, tx in enumerate(transactions):
                 # Determine transaction date/time from correct database fields
                 trans_dt = None
                 tgl_str = None
                 waktu_str = None
                 
+                # Get the values
+                tanggal = tx.get('tanggal')
+                waktu = tx.get('waktu')
+                tgl_donasi = tx.get('tgl_donasi')
+                created_date = tx.get('created_date')
+                
+                logger.debug(f"[HISTORY] Tx {idx}: tanggal={tanggal}, waktu={waktu}, tgl_donasi={tgl_donasi}, created_date={created_date}")
+                
                 # Priority 1: Use tanggal + waktu (VARCHAR fields from DANA response)
-                if tx.get('tanggal') and tx.get('waktu'):
+                if tanggal and waktu:
                     try:
-                        tanggal_str = str(tx.get('tanggal')).strip()
-                        waktu_str = str(tx.get('waktu')).strip()
+                        tanggal_str = str(tanggal).strip()
+                        waktu_str = str(waktu).strip()
                         tgl_str = tanggal_str
                         
                         # Try to parse and combine
@@ -1162,6 +1181,7 @@ class DanaPaymentService:
                             try:
                                 combined_str = f"{tanggal_str} {waktu_str}".strip()
                                 trans_dt = datetime.strptime(combined_str, date_format.replace('%S', '%S'))
+                                logger.debug(f"[HISTORY] Parsed tanggal+waktu as {date_format}")
                                 break
                             except ValueError:
                                 continue
@@ -1173,42 +1193,46 @@ class DanaPaymentService:
                                     time_obj = datetime.strptime(waktu_str, time_format).time()
                                     date_obj = datetime.strptime(tanggal_str, '%d-%m-%Y').date() if '-' in tanggal_str and len(tanggal_str.split('-')[0]) <= 2 else datetime.strptime(tanggal_str, '%Y-%m-%d').date()
                                     trans_dt = datetime.combine(date_obj, time_obj)
+                                    logger.debug(f"[HISTORY] Parsed tanggal+waktu separately")
                                     break
                                 except ValueError:
                                     continue
                     except Exception as e:
-                        print(f"[HISTORY] Failed to parse tanggal+waktu: {e}")
+                        logger.warning(f"[HISTORY] Failed to parse tanggal+waktu: {e}")
                 
                 # Priority 2: Use tgl_donasi (DATE field)
-                if not trans_dt and tx.get('tgl_donasi'):
+                if not trans_dt and tgl_donasi:
                     try:
-                        tgl_donasi = tx.get('tgl_donasi')
-                        tgl_str = str(tgl_donasi)
-                        if isinstance(tgl_donasi, str):
-                            trans_dt = datetime.strptime(tgl_donasi, '%Y-%m-%d').replace(hour=12, minute=0, second=0)
+                        tgl_donasi_val = tgl_donasi
+                        tgl_str = str(tgl_donasi_val)
+                        if isinstance(tgl_donasi_val, str):
+                            trans_dt = datetime.strptime(tgl_donasi_val, '%Y-%m-%d').replace(hour=12, minute=0, second=0)
                         else:
                             # Assume it's a date object
-                            trans_dt = datetime.combine(tgl_donasi, datetime.min.time())
+                            trans_dt = datetime.combine(tgl_donasi_val, datetime.min.time())
+                        logger.debug(f"[HISTORY] Using tgl_donasi: {tgl_str}")
                     except Exception as e:
-                        print(f"[HISTORY] Failed to parse tgl_donasi: {e}")
+                        logger.warning(f"[HISTORY] Failed to parse tgl_donasi: {e}")
                 
                 # Priority 3: Use created_date (TIMESTAMP field)
-                if not trans_dt and tx.get('created_date'):
+                if not trans_dt and created_date:
                     try:
-                        created_date = tx.get('created_date')
-                        tgl_str = str(created_date)
-                        if isinstance(created_date, str):
+                        created_date_val = created_date
+                        tgl_str = str(created_date_val)
+                        if isinstance(created_date_val, str):
                             # Try common timestamp formats
                             for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S.%f']:
                                 try:
-                                    trans_dt = datetime.strptime(created_date[:19], fmt[:19])
+                                    trans_dt = datetime.strptime(created_date_val[:19], fmt[:19])
+                                    logger.debug(f"[HISTORY] Using created_date: {tgl_str}")
                                     break
                                 except ValueError:
                                     continue
                         else:
-                            trans_dt = created_date
+                            trans_dt = created_date_val
+                            logger.debug(f"[HISTORY] Using created_date (object): {tgl_str}")
                     except Exception as e:
-                        print(f"[HISTORY] Failed to parse created_date: {e}")
+                        logger.warning(f"[HISTORY] Failed to parse created_date: {e}")
 
                 formatted_data["detailData"].append({
                     "originalPartnerReferenceNo": tx.get('partner_reference_no') or tx.get('order_id'),
@@ -1230,6 +1254,9 @@ class DanaPaymentService:
                     "source": "local_database"
                 })
 
+            logger.info(f"[HISTORY] ✅ API HIT SUCCESS - Formatted {len(formatted_data['detailData'])} transactions")
+            logger.info(f"[HISTORY] Response sample: {json.dumps(formatted_data['detailData'][0] if formatted_data['detailData'] else {}, default=str)[:500]}...")
+            
             return Response.success(
                 data=formatted_data,
                 message=f"History retrieved from local database ({len(transactions)} transactions)"
@@ -1238,7 +1265,7 @@ class DanaPaymentService:
         except Exception as e:
             import traceback
             errorMsg = traceback.format_exc()
-            print(f"[HISTORY] EXCEPTION: {errorMsg}")
+            logger.error(f"[HISTORY] ❌ EXCEPTION: {errorMsg}")
             return Response.error(f"History error: {str(e)}", 500)
 
     def _callDanaTransactionDetailApi(self, accessToken, danaRefNo):

@@ -2,6 +2,11 @@ from src.models.muzaki_model import MuzakiModel
 from src.models.donation_model import DonationModel
 from src.models.user_model import UserModel
 from src.utils.response import Response
+import json
+import logging
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 
 class UserService:
@@ -101,6 +106,8 @@ class UserService:
             offset: Offset untuk paginasi
         """
         try:
+            logger.info(f"[HISTORY] Getting history - userId={userId}, email={email}, muzakiId={muzakiId}, limit={limit}, offset={offset}")
+            
             # Tentukan identifier untuk query
             if muzakiId:
                 history = self.donationModel.getHistoryByMuzakiId(muzakiId, limit, offset)
@@ -117,9 +124,16 @@ class UserService:
             else:
                 return Response.error("User identifier required", 400)
 
+            logger.info(f"[HISTORY] Found {len(history)} records from database")
+            
+            # Debug: Print first record to see what fields are available
+            if history and len(history) > 0:
+                logger.debug(f"[HISTORY] First record keys: {list(history[0].keys())}")
+                logger.debug(f"[HISTORY] First record raw data: {json.dumps({k: str(v) for k, v in history[0].items()}, default=str)}")
+
             # Format response
             formattedHistory = []
-            for item in history:
+            for idx, item in enumerate(history):
                 # Parse date/time fields
                 trans_date_str = None
                 trans_time_str = None
@@ -130,6 +144,8 @@ class UserService:
                 tanggal = item.get('tanggal')
                 waktu = item.get('waktu')
                 created_date = item.get('created_date')
+                
+                logger.debug(f"[HISTORY] Record {idx}: tgl_donasi={tgl_donasi}, tanggal={tanggal}, waktu={waktu}, created_date={created_date}")
                 
                 # Priority 1: tanggal + waktu
                 if tanggal and waktu:
@@ -144,16 +160,18 @@ class UserService:
                             except ValueError:
                                 continue
                     except Exception as e:
-                        pass
+                        logger.warning(f"[HISTORY] Failed to parse tanggal+waktu: {e}")
                 
                 # Priority 2: tgl_donasi
                 if not trans_date_str and tgl_donasi:
                     trans_date_str = str(tgl_donasi)
+                    logger.debug(f"[HISTORY] Using tgl_donasi: {trans_date_str}")
                 
                 # Priority 3: created_date
                 if not trans_date_str and created_date:
                     trans_date_str = str(created_date)
                     trans_datetime = str(created_date)
+                    logger.debug(f"[HISTORY] Using created_date: {trans_date_str}")
                 
                 formattedHistory.append({
                     "id": item.get('id'),
@@ -175,16 +193,22 @@ class UserService:
                     "transDateTime": trans_datetime  # Combined for convenience
                 })
 
-            return Response.success(data={
+            response_data = {
                 "transactions": formattedHistory,
                 "pagination": {
                     "limit": limit,
                     "offset": offset,
                     "count": len(formattedHistory)
                 }
-            })
+            }
+            
+            logger.info(f"[HISTORY] ✅ API HIT SUCCESS - Returning {len(formattedHistory)} transactions")
+            logger.info(f"[HISTORY] Response: {json.dumps(response_data, default=str)[:500]}...")  # Log first 500 chars
+            
+            return Response.success(data=response_data)
 
         except Exception as e:
+            logger.error(f"[HISTORY] ❌ ERROR: {str(e)}", exc_info=True)
             return Response.error(f"Gagal mengambil history: {str(e)}", 500)
 
     def getTransactionDetail(self, orderId, userId=None):
