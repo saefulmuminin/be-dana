@@ -1130,22 +1130,55 @@ class DanaPaymentService:
             else:
                 logger.info(f"[HISTORY] No access token, using local database")
 
-            # Fallback to local database
-            logger.info(f"[HISTORY] Querying local database...")
-            logModel = LogDanaTransactionModel()
-            transactions = logModel.getByUserId(userId, page, pageSize)
-
-            # If no transactions by userId, try by email
-            if not transactions and email:
-                logger.info(f"[HISTORY] No transactions by userId, trying email...")
-                transactions = logModel.getByEmail(email, page, pageSize)
-
-            logger.info(f"[HISTORY] Found {len(transactions)} transactions in local DB")
+            # Fallback to local database - Query adm_campaign_donasi directly with campaign join
+            logger.info(f"[HISTORY] Querying local database (adm_campaign_donasi)...")
+            conn = self.db.getConnection()
             
-            # Debug: Print first record to see what fields are available
-            if transactions and len(transactions) > 0:
-                logger.debug(f"[HISTORY] First record keys: {list(transactions[0].keys())}")
-                logger.debug(f"[HISTORY] First record raw data: {json.dumps({k: str(v) for k, v in transactions[0].items()}, default=str)}")
+            try:
+                with conn.cursor() as cursor:
+                    sql = """
+                        SELECT 
+                            d.id, d.order_id, d.partner_reference_no, d.status, 
+                            d.tgl_donasi, d.tanggal, d.waktu, d.nominal, d.no_transaksi,
+                            d.tipe_zakat, d.created_date, d.campaign_id,
+                            c.name as campaign_name, c.kategori
+                        FROM adm_campaign_donasi d
+                        LEFT JOIN adm_campaign c ON d.campaign_id = c.id
+                        WHERE d.is_delete = 'N'
+                    """
+                    params = []
+                    
+                    # Filter by muzaki_id if available from user
+                    if userId:
+                        # Try to find user first to get muzaki_id
+                        user_data = self.userModel.findById(userId)
+                        if user_data and user_data.get('muzaki_id'):
+                            sql += " AND d.muzaki_id = %s"
+                            params.append(user_data.get('muzaki_id'))
+                        elif email:
+                            sql += " AND d.email = %s"
+                            params.append(email)
+                    
+                    # Pagination
+                    offset_val = (page - 1) * pageSize
+                    sql += " ORDER BY d.tgl_donasi DESC, d.id DESC LIMIT %s OFFSET %s"
+                    params.extend([pageSize, offset_val])
+                    
+                    logger.debug(f"[HISTORY] Executing query with params: {params}")
+                    cursor.execute(sql, tuple(params))
+                    rows = cursor.fetchall()
+                    
+                    logger.info(f"[HISTORY] Found {len(rows)} transactions in local DB")
+                    
+                    # Debug: Print first record to see what fields are available
+                    if rows and len(rows) > 0:
+                        logger.debug(f"[HISTORY] First record keys: {list(rows[0].keys())}")
+                        logger.debug(f"[HISTORY] First record raw data: {json.dumps({k: str(v) for k, v in rows[0].items()}, default=str)}")
+                    
+                    transactions = rows
+            except Exception as e:
+                logger.error(f"[HISTORY] Database query failed: {str(e)}", exc_info=True)
+                transactions = []
 
             # Format response similar to DANA API format
             formatted_data = {
@@ -1235,14 +1268,23 @@ class DanaPaymentService:
                         logger.warning(f"[HISTORY] Failed to parse created_date: {e}")
 
                 formatted_data["detailData"].append({
+                    "order_id": tx.get('order_id'),
+                    "no_transaksi": tx.get('no_transaksi'),
+                    "campaign_id": tx.get('campaign_id'),
+                    "campaign_name": tx.get('campaign_name'),
+                    "tipe_zakat": tx.get('tipe_zakat'),
+                    "nominal": float(tx.get('nominal', 0)),
+                    "tanggal": tanggal,
+                    "waktu": waktu,
+                    "status": tx.get('status'),
                     "originalPartnerReferenceNo": tx.get('partner_reference_no') or tx.get('order_id'),
                     "originalReferenceNo": tx.get('dana_reference_no') or tx.get('order_id'),
                     "transDateTime": trans_dt.isoformat() if trans_dt else None,
-                    "transDate": tgl_str,  # Original date string (separate field)
-                    "transTime": waktu_str or (trans_dt.strftime('%H:%M:%S') if trans_dt else None),  # Time component
+                    "transDate": tgl_str,
+                    "transTime": waktu or (trans_dt.strftime('%H:%M:%S') if trans_dt else None),
                     "amount": {
-                        "value": str(tx.get('amount', 0)),
-                        "currency": tx.get('currency', 'IDR')
+                        "value": str(tx.get('amount', tx.get('nominal', 0))),
+                        "currency": "IDR"
                     },
                     "transactionStatus": tx.get('status'),
                     "transactionStatusDesc": tx.get('status_desc'),
@@ -1848,6 +1890,8 @@ class DanaPaymentService:
         2. Fallback to local database
         """
         try:
+            logger.info(f"[HISTORY] Starting getHistory - userId={userId}, month={month}, year={year}, status={status}, limit={limit}, offset={offset}")
+            
             # Check user access token
             accessToken = None
             if userId:
@@ -1875,7 +1919,7 @@ class DanaPaymentService:
                     fromInit = start_date.strftime('%Y-%m-%dT%H:%M:%SZ')
                     toInit = end_date.strftime('%Y-%m-%dT%H:%M:%SZ')
                     
-                    print(f"[HISTORY] Fetching from DANA API: {fromInit} to {toInit}")
+                    logger.info(f"[HISTORY] Attempting DANA API: {fromInit} to {toInit}")
                     
                     api_result = self._callDanaTransactionHistoryApi(
                         accessToken, 
@@ -1886,7 +1930,7 @@ class DanaPaymentService:
                     )
                     
                     if api_result['success'] and api_result.get('data', {}).get('detailData'):
-                        print("[HISTORY] Got data from DANA API")
+                        logger.info(f"[HISTORY] ✅ DANA API SUCCESS - Got {len(api_result['data']['detailData'])} records")
                         # Map DANA data
                         dana_txs = api_result['data']['detailData']
                         mapped_results = []
@@ -1914,27 +1958,33 @@ class DanaPaymentService:
                                              status.upper()
                              
                              mapped_results = [r for r in mapped_results if r['status'] == target_status]
+                             logger.debug(f"[HISTORY] Filtered to {len(mapped_results)} records with status={status}")
 
+                        logger.info(f"[HISTORY] ✅ API HIT SUCCESS (DANA API) - Returning {len(mapped_results)} transactions")
                         return Response.success(
                             data={"detailData": mapped_results}, 
                             message="History retrieved from DANA API"
                         )
                 except Exception as apiErr:
-                    print(f"[HISTORY] DANA API Attempt Failed: {str(apiErr)}")
+                    logger.warning(f"[HISTORY] DANA API Attempt Failed: {str(apiErr)}")
+                    logger.info(f"[HISTORY] Falling back to local database...")
                     # Continue to fallback
+            else:
+                logger.info(f"[HISTORY] No access token, using local database")
             
             # 2. Fallback to Local DB
+            logger.info(f"[HISTORY] Querying local database...")
             conn = self.db.getConnection()
             results = []
             
             # Build query
             sql = """
                 SELECT 
-                    d.order_id, d.partner_reference_no, d.status, d.tgl_donasi, d.nominal,
-                    c.name as campaign_name, c.kategori
+                    d.id, d.order_id, d.partner_reference_no, d.status, d.tgl_donasi, d.tanggal, d.waktu, d.nominal,
+                    d.created_date, c.name as campaign_name, c.kategori
                 FROM adm_campaign_donasi d
                 LEFT JOIN adm_campaign c ON d.campaign_id = c.id
-                WHERE 1=1
+                WHERE d.is_delete = 'N'
             """
             params = []
             
@@ -1968,19 +2018,32 @@ class DanaPaymentService:
             sql += " ORDER BY d.tgl_donasi DESC LIMIT %s OFFSET %s"
             params.extend([limit, offset])
             
+            logger.debug(f"[HISTORY] Executing query with params: {params}")
+            
             with conn.cursor() as cursor:
                 cursor.execute(sql, tuple(params))
                 rows = cursor.fetchall()
                 
-                for row in rows:
+                logger.info(f"[HISTORY] Found {len(rows)} records from local database")
+                
+                # Debug: Print first record to see what fields are available
+                if rows and len(rows) > 0:
+                    logger.debug(f"[HISTORY] First record keys: {list(rows[0].keys())}")
+                    logger.debug(f"[HISTORY] First record raw data: {json.dumps({k: str(v) for k, v in rows[0].items()}, default=str)}")
+                
+                for idx, row in enumerate(rows):
                     # Map params
                     orderId = row.get('order_id')
                     partnerRef = row.get('partner_reference_no')
                     trxStatus = row.get('status')
                     tglDonasi = row.get('tgl_donasi')
+                    tanggal = row.get('tanggal')
+                    waktu = row.get('waktu')
                     nominal = row.get('nominal')
                     campaignName = row.get('campaign_name')
                     kategori = row.get('kategori')
+                    
+                    logger.debug(f"[HISTORY] Record {idx}: orderId={orderId}, tglDonasi={tglDonasi}, tanggal={tanggal}, waktu={waktu}, status={trxStatus}")
                     
                     # Format Status for Frontend
                     statusMap = {
@@ -1994,14 +2057,37 @@ class DanaPaymentService:
                     }
                     displayStatus = statusMap.get(trxStatus, trxStatus.upper())
                     
+                    # Format datetime
+                    trans_dt_str = None
+                    if tglDonasi:
+                        try:
+                            if isinstance(tglDonasi, str):
+                                trans_dt_str = datetime.strptime(tglDonasi, '%Y-%m-%d').strftime('%Y-%m-%dT%H:%M:%S+07:00')
+                            else:
+                                trans_dt_str = tglDonasi.strftime('%Y-%m-%dT%H:%M:%S+07:00')
+                        except Exception as e:
+                            logger.warning(f"[HISTORY] Failed to format tglDonasi: {e}")
+                            trans_dt_str = str(tglDonasi)
+                    
                     results.append({
+                        "order_id": orderId,
+                        "no_transaksi": row.get('no_transaksi'),
+                        "campaign_id": row.get('campaign_id'),
+                        "campaign_name": campaignName or "Donasi",
+                        "tipe_zakat": row.get('tipe_zakat'),
+                        "nominal": float(nominal) if nominal else 0.0,
+                        "tanggal": tanggal,
+                        "waktu": waktu,
+                        "status": displayStatus,
                         "referenceNo": orderId,
                         "originalReferenceNo": partnerRef,
                         "merchantId": self.merchantId,
                         "transactionStatus": displayStatus,
-                        "status": displayStatus,
-                        "transDateTime": tglDonasi.strftime('%Y-%m-%dT%H:%M:%S+07:00') if tglDonasi else '',
-                        "dateTime": tglDonasi.strftime('%Y-%m-%dT%H:%M:%S+07:00') if tglDonasi else '',
+                        "transDateTime": trans_dt_str or '',
+                        "dateTime": trans_dt_str or '',
+                        "tglDonasi": str(tglDonasi) if tglDonasi else None,
+                        "tanggal": tanggal,
+                        "waktu": waktu,
                         "amount": {
                             "value": str(int(nominal)) if nominal else "0",
                             "currency": "IDR"
@@ -2011,10 +2097,13 @@ class DanaPaymentService:
                         "source": "local_database"
                     })
             
-            return Response.success(data={"detailData": results}, message="History retrieved form local DB")
+            logger.info(f"[HISTORY] ✅ API HIT SUCCESS (LOCAL DB) - Returning {len(results)} transactions")
+            logger.info(f"[HISTORY] Response sample: {json.dumps(results[0] if results else {}, default=str)[:500]}...")
+            
+            return Response.success(data={"detailData": results}, message="History retrieved from local DB")
 
         except Exception as e:
-            print(f"[History] Error: {str(e)}")
+            logger.error(f"[HISTORY] ❌ ERROR: {str(e)}", exc_info=True)
             import traceback
             traceback.print_exc()
             return {

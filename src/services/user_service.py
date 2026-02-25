@@ -176,21 +176,23 @@ class UserService:
                 formattedHistory.append({
                     "id": item.get('id'),
                     "order_id": item.get('order_id'),
+                    "no_transaksi": item.get('no_transaksi'),
+                    "campaign_id": item.get('campaign_id'),
                     "campaign_name": item.get('campaign_name'),
                     "campaign_image": item.get('campaign_image'),
+                    "tipe_zakat": item.get('tipe_zakat'),
                     "nominal": float(item.get('nominal', 0)),
-                    "biaya_admin": float(item.get('biaya_admin', 0)),
-                    "total_bayar": float(item.get('total_bayar', 0)),
+                    "tanggal": tanggal,
+                    "waktu": waktu,
                     "status": item.get('status_internal', item.get('status')),
                     "dana_status": item.get('dana_status'),
-                    "tipe_zakat": item.get('tipe_zakat'),
+                    "biaya_admin": float(item.get('biaya_admin', 0)),
+                    "total_bayar": float(item.get('total_bayar', 0)),
                     "metode_name": item.get('metode_name'),
                     "metode_image": item.get('metode_image'),
-                    "tgl_donasi": trans_date_str,  # Transaction date
-                    "tanggal": tanggal,  # Original date string from DANA
-                    "waktu": waktu,  # Original time string from DANA
-                    "created_date": str(created_date) if created_date else None,  # System timestamp
-                    "transDateTime": trans_datetime  # Combined for convenience
+                    "tgl_donasi": trans_date_str,
+                    "created_date": str(created_date) if created_date else None,
+                    "transDateTime": trans_datetime
                 })
 
             response_data = {
