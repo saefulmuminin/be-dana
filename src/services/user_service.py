@@ -120,6 +120,41 @@ class UserService:
             # Format response
             formattedHistory = []
             for item in history:
+                # Parse date/time fields
+                trans_date_str = None
+                trans_time_str = None
+                trans_datetime = None
+                
+                # Get transaction date/time from available fields
+                tgl_donasi = item.get('tgl_donasi')
+                tanggal = item.get('tanggal')
+                waktu = item.get('waktu')
+                created_date = item.get('created_date')
+                
+                # Priority 1: tanggal + waktu
+                if tanggal and waktu:
+                    trans_date_str = str(tanggal)
+                    trans_time_str = str(waktu)
+                    try:
+                        combined_str = f"{tanggal} {waktu}".strip()
+                        for fmt in ['%d-%m-%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S', '%d-%m-%Y %H:%M', '%Y-%m-%d %H:%M']:
+                            try:
+                                trans_datetime = combined_str if isinstance(combined_str, str) else str(combined_str)
+                                break
+                            except ValueError:
+                                continue
+                    except Exception as e:
+                        pass
+                
+                # Priority 2: tgl_donasi
+                if not trans_date_str and tgl_donasi:
+                    trans_date_str = str(tgl_donasi)
+                
+                # Priority 3: created_date
+                if not trans_date_str and created_date:
+                    trans_date_str = str(created_date)
+                    trans_datetime = str(created_date)
+                
                 formattedHistory.append({
                     "id": item.get('id'),
                     "order_id": item.get('order_id'),
@@ -133,8 +168,11 @@ class UserService:
                     "tipe_zakat": item.get('tipe_zakat'),
                     "metode_name": item.get('metode_name'),
                     "metode_image": item.get('metode_image'),
-                    "tgl_donasi": str(item.get('tgl_donasi')) if item.get('tgl_donasi') else None,
-                    "created_date": str(item.get('created_date')) if item.get('created_date') else None
+                    "tgl_donasi": trans_date_str,  # Transaction date
+                    "tanggal": tanggal,  # Original date string from DANA
+                    "waktu": waktu,  # Original time string from DANA
+                    "created_date": str(created_date) if created_date else None,  # System timestamp
+                    "transDateTime": trans_datetime  # Combined for convenience
                 })
 
             return Response.success(data={

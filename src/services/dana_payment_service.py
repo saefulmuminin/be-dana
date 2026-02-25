@@ -1144,34 +1144,78 @@ class DanaPaymentService:
             }
 
             for tx in transactions:
-                # Determine transaction date/time
-                trans_dt = tx.get('created_time')
-                if tx.get('donation_date') and tx.get('donation_time'):
-                     try:
-                         # Combine date and time
-                         d_date = tx.get('donation_date')
-                         d_time = tx.get('donation_time')
-                         
-                         # Handle if they are strings
-                         if isinstance(d_date, str):
-                             d_date = datetime.strptime(d_date, '%Y-%m-%d').date()
-                         if isinstance(d_time, str):
-                             # Check if it's already a time object (not likely if coming from raw sql without parsing, but psycopg2 does parse)
-                             if not isinstance(d_time, (datetime, type(datetime.now().time()))):
-                                  try:
-                                     d_time = datetime.strptime(str(d_time), '%H:%M:%S').time()
-                                  except ValueError:
-                                     # Handle case where time might be partial or contain decimals
-                                     d_time = datetime.strptime(str(d_time).split('.')[0], '%H:%M:%S').time()
-                                 
-                         trans_dt = datetime.combine(d_date, d_time)
-                     except Exception as e:
-                         pass # Fallback to created_time
+                # Determine transaction date/time from correct database fields
+                trans_dt = None
+                tgl_str = None
+                waktu_str = None
+                
+                # Priority 1: Use tanggal + waktu (VARCHAR fields from DANA response)
+                if tx.get('tanggal') and tx.get('waktu'):
+                    try:
+                        tanggal_str = str(tx.get('tanggal')).strip()
+                        waktu_str = str(tx.get('waktu')).strip()
+                        tgl_str = tanggal_str
+                        
+                        # Try to parse and combine
+                        # Common formats: "DD-MM-YYYY HH:MM:SS", "YYYY-MM-DD HH:MM:SS"
+                        for date_format in ['%d-%m-%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S', '%d-%m-%Y', '%Y-%m-%d']:
+                            try:
+                                combined_str = f"{tanggal_str} {waktu_str}".strip()
+                                trans_dt = datetime.strptime(combined_str, date_format.replace('%S', '%S'))
+                                break
+                            except ValueError:
+                                continue
+                        
+                        # If parsing failed, try time separately
+                        if not trans_dt and waktu_str:
+                            for time_format in ['%H:%M:%S', '%H:%M']:
+                                try:
+                                    time_obj = datetime.strptime(waktu_str, time_format).time()
+                                    date_obj = datetime.strptime(tanggal_str, '%d-%m-%Y').date() if '-' in tanggal_str and len(tanggal_str.split('-')[0]) <= 2 else datetime.strptime(tanggal_str, '%Y-%m-%d').date()
+                                    trans_dt = datetime.combine(date_obj, time_obj)
+                                    break
+                                except ValueError:
+                                    continue
+                    except Exception as e:
+                        print(f"[HISTORY] Failed to parse tanggal+waktu: {e}")
+                
+                # Priority 2: Use tgl_donasi (DATE field)
+                if not trans_dt and tx.get('tgl_donasi'):
+                    try:
+                        tgl_donasi = tx.get('tgl_donasi')
+                        tgl_str = str(tgl_donasi)
+                        if isinstance(tgl_donasi, str):
+                            trans_dt = datetime.strptime(tgl_donasi, '%Y-%m-%d').replace(hour=12, minute=0, second=0)
+                        else:
+                            # Assume it's a date object
+                            trans_dt = datetime.combine(tgl_donasi, datetime.min.time())
+                    except Exception as e:
+                        print(f"[HISTORY] Failed to parse tgl_donasi: {e}")
+                
+                # Priority 3: Use created_date (TIMESTAMP field)
+                if not trans_dt and tx.get('created_date'):
+                    try:
+                        created_date = tx.get('created_date')
+                        tgl_str = str(created_date)
+                        if isinstance(created_date, str):
+                            # Try common timestamp formats
+                            for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S.%f']:
+                                try:
+                                    trans_dt = datetime.strptime(created_date[:19], fmt[:19])
+                                    break
+                                except ValueError:
+                                    continue
+                        else:
+                            trans_dt = created_date
+                    except Exception as e:
+                        print(f"[HISTORY] Failed to parse created_date: {e}")
 
                 formatted_data["detailData"].append({
                     "originalPartnerReferenceNo": tx.get('partner_reference_no') or tx.get('order_id'),
                     "originalReferenceNo": tx.get('dana_reference_no') or tx.get('order_id'),
                     "transDateTime": trans_dt.isoformat() if trans_dt else None,
+                    "transDate": tgl_str,  # Original date string (separate field)
+                    "transTime": waktu_str or (trans_dt.strftime('%H:%M:%S') if trans_dt else None),  # Time component
                     "amount": {
                         "value": str(tx.get('amount', 0)),
                         "currency": tx.get('currency', 'IDR')
