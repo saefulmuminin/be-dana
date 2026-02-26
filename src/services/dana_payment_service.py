@@ -1983,6 +1983,7 @@ class DanaPaymentService:
             sql = """
                 SELECT 
                     d.id, d.order_id, d.partner_reference_no, d.status, d.tgl_donasi, d.tanggal, d.waktu, d.nominal,
+                    d.no_transaksi, d.campaign_id, d.tipe_zakat,
                     d.created_date, c.name as campaign_name, c.kategori
                 FROM adm_campaign_donasi d
                 LEFT JOIN adm_campaign c ON d.campaign_id = c.id
