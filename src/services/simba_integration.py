@@ -327,22 +327,9 @@ class SimbaIntegration:
             if not via:
                 via = Config.SIMBA_VIA or account_info['akun']
 
-            # Kegiatan code dari ref_dana_sosial, fallback ke Config.SIMBA_KEGIATAN
-            kegiatan = None
-            if campaign_kegiatan_code:
-                cleaned_kegiatan = self._cleanProgramString(campaign_kegiatan_code, 9)
-                if len(cleaned_kegiatan) == 9 and cleaned_kegiatan.isdigit():
-                    kegiatan = cleaned_kegiatan
-                    print(f"[SIMBA] ✓ Kegiatan dari ref_dana_sosial: {kegiatan}")
-                else:
-                    print(f"[SIMBA] ⚠️  Kegiatan code dari DB '{cleaned_kegiatan}' tidak valid, fallback ke Config")
-
-            if not kegiatan:
-                kegiatan = self._cleanProgramString(Config.SIMBA_KEGIATAN or '', 9) or None
-                if kegiatan:
-                    print(f"[SIMBA] ✓ Kegiatan dari Config.SIMBA_KEGIATAN: {kegiatan}")
-                else:
-                    print(f"[SIMBA] ⚠️  Tidak ada kegiatan code, field kegiatan tidak disertakan")
+            # Kegiatan code hardcoded
+            kegiatan = '113019977'
+            print(f"[SIMBA] ✓ Kegiatan hardcoded: {kegiatan}")
 
             # Validate and clean field lengths to match SIMBA requirements
             program = self._cleanProgramString(program, 9)  # Must be 9 digits
