@@ -2446,6 +2446,7 @@ class DanaPaymentService:
             campaign_tipe = None
             campaign_coa = None
             campaign_name = None
+            campaign_program_code = None
 
             campaign_id = donation.get('campaign_id')
             if campaign_id:

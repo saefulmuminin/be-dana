@@ -309,14 +309,10 @@ class SimbaIntegration:
                     if campaign_program_code:
                         cleaned_program = self._cleanProgramString(campaign_program_code, 9)
 
-                        # Validasi: code harus 9 digits dan format valid (110100000 atau 120100000)
+                        # Validasi: code harus 9 digits dan numerik
                         if len(cleaned_program) == 9 and cleaned_program.isdigit():
-                            # Check if it's a valid SIMBA program code (starts with 11 or 12)
-                            if cleaned_program.startswith('110') or cleaned_program.startswith('120'):
-                                program_from_db = cleaned_program
-                                print(f"[SIMBA] ✓ Using program code from ref_dana_sosial: {program_from_db}")
-                            else:
-                                print(f"[SIMBA] ⚠️  Program code from ref_dana_sosial '{cleaned_program}' is not valid SIMBA format (must start with 110 or 120)")
+                            program_from_db = cleaned_program
+                            print(f"[SIMBA] ✓ Using program code from ref_dana_sosial: {program_from_db}")
                         else:
                             print(f"[SIMBA] ⚠️  Program code from ref_dana_sosial '{cleaned_program}' is not 9 digits or not numeric")
 
@@ -349,9 +345,9 @@ class SimbaIntegration:
                 print(f"[SIMBA] No account mapping found")
                 return {'success': False, 'error': 'No account mapping'}
 
-            # Use account as via (kode_akun)
+            # Use SIMBA_VIA config (kas/debet account), fallback to account if not set
             if not via:
-                via = account_info['akun']
+                via = Config.SIMBA_VIA or account_info['akun']
 
             # Validate and clean field lengths to match SIMBA requirements
             program = self._cleanProgramString(program, 9)  # Must be 9 digits
