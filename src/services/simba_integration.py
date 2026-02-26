@@ -480,7 +480,21 @@ class SimbaIntegration:
             'infak terikat',
             'infaq terikat',
             'infaq sedekah terikat',
-            'infak sedekah terikat'
+            'infak sedekah terikat',
+            # Program terikat spesifik (42010104-42010109)
+            'dakwah',
+            'kesehatan',
+            'pendidikan',
+            'beasiswa',
+            'ekonomi',
+            'usaha',
+            'umkm',
+            'kemanusiaan',
+            'bencana',
+            'darurat',
+            'solidaritas',
+            'palestina',
+            'dunia islam',
         ]
 
         # Check jika kategori termasuk program terikat
@@ -504,11 +518,17 @@ class SimbaIntegration:
         """
         Map kategori campaign ke kode akun
 
-        Kode Akun (8 digits):
+        Kode Akun (8 digits) berdasarkan Daftar Jenis Akun Level 5 BAZNAS:
         - Maal (Zakat Penghasilan): 41020201 (4.1.02.02.01)
         - Fitrah: 41020101 (4.1.02.01.01)
         - Fidyah: 42010601 (4.2.01.06.01)
-        - Infaq Sedekah Terikat: 42010101 (4.2.01.01.01)
+        - Infaq Terikat - Program (umum): 42010101 (4.2.01.01.01)
+        - Infaq Terikat - Dakwah: 42010104 (4.2.01.01.04)
+        - Infaq Terikat - Kesehatan: 42010105 (4.2.01.01.05)
+        - Infaq Terikat - Pendidikan: 42010106 (4.2.01.01.06)
+        - Infaq Terikat - Ekonomi: 42010107 (4.2.01.01.07)
+        - Infaq Terikat - Kemanusiaan & Bencana: 42010108 (4.2.01.01.08)
+        - Infaq Terikat - Solidaritas Dunia Islam: 42010109 (4.2.01.01.09)
         - Infaq Sedekah Tidak Terikat: 42020101 (4.2.02.01.01)
 
         Args:
@@ -548,12 +568,37 @@ class SimbaIntegration:
             print(f"[SIMBA] ✓ Matched kategori 'fidyah' → Akun: 42010601 (Fidyah), Kadar: 0")
             return {'akun': '42010601', 'kadar': '0'}  # 4.2.01.06.01
 
-        # 3. Infaq/Infak Terikat
+        # 3. Program Terikat Spesifik (urutan penting: cek sebelum 'infak terikat' generik)
+        elif 'dakwah' in kategori_lower:
+            print(f"[SIMBA] ✓ Matched kategori 'dakwah' → Akun: 42010104 (Kas Program Dakwah), Kadar: 0")
+            return {'akun': '42010104', 'kadar': '0'}  # 4.2.01.01.04
+
+        elif any(kw in kategori_lower for kw in ['kesehatan', 'health']):
+            print(f"[SIMBA] ✓ Matched kategori 'kesehatan' → Akun: 42010105 (Kas Program Kesehatan), Kadar: 0")
+            return {'akun': '42010105', 'kadar': '0'}  # 4.2.01.01.05
+
+        elif any(kw in kategori_lower for kw in ['pendidikan', 'beasiswa', 'education']):
+            print(f"[SIMBA] ✓ Matched kategori 'pendidikan' → Akun: 42010106 (Kas Program Pendidikan), Kadar: 0")
+            return {'akun': '42010106', 'kadar': '0'}  # 4.2.01.01.06
+
+        elif any(kw in kategori_lower for kw in ['ekonomi', 'usaha', 'umkm']):
+            print(f"[SIMBA] ✓ Matched kategori 'ekonomi' → Akun: 42010107 (Kas Program Ekonomi), Kadar: 0")
+            return {'akun': '42010107', 'kadar': '0'}  # 4.2.01.01.07
+
+        elif any(kw in kategori_lower for kw in ['kemanusiaan', 'bencana', 'darurat']):
+            print(f"[SIMBA] ✓ Matched kategori 'kemanusiaan/bencana' → Akun: 42010108 (Kas Program Kemanusiaan dan Bencana), Kadar: 0")
+            return {'akun': '42010108', 'kadar': '0'}  # 4.2.01.01.08
+
+        elif any(kw in kategori_lower for kw in ['solidaritas', 'dunia islam', 'palestina']):
+            print(f"[SIMBA] ✓ Matched kategori 'solidaritas' → Akun: 42010109 (Kas Program Solidaritas Dunia Islam), Kadar: 0")
+            return {'akun': '42010109', 'kadar': '0'}  # 4.2.01.01.09
+
+        # 4. Infaq/Infak Terikat (generik)
         elif 'infak terikat' in kategori_lower or 'infaq terikat' in kategori_lower or 'sedekah terikat' in kategori_lower:
             print(f"[SIMBA] ✓ Matched kategori 'terikat' → Akun: 42010101 (Infaq Terikat), Kadar: 0")
             return {'akun': '42010101', 'kadar': '0'}  # 4.2.01.01.01
 
-        # 4. Infaq/Infak Tidak Terikat (explicit)
+        # 5. Infaq/Infak Tidak Terikat (explicit)
         elif 'infak tidak terikat' in kategori_lower or 'infaq tidak terikat' in kategori_lower or 'sedekah tidak terikat' in kategori_lower:
             print(f"[SIMBA] ✓ Matched kategori 'tidak terikat' → Akun: 42020101 (Infaq Tidak Terikat), Kadar: 0")
             return {'akun': '42020101', 'kadar': '0'}  # 4.2.02.01.01
@@ -570,7 +615,32 @@ class SimbaIntegration:
                 print(f"[SIMBA] ✓ Matched name 'fidyah' (fallback) → Akun: 42010601 (Fidyah), Kadar: 0")
                 return {'akun': '42010601', 'kadar': '0'}  # 4.2.01.06.01
 
-            # Check terikat in name
+            # Check program spesifik in name
+            elif 'dakwah' in name_lower:
+                print(f"[SIMBA] ✓ Matched name 'dakwah' (fallback) → Akun: 42010104 (Kas Program Dakwah), Kadar: 0")
+                return {'akun': '42010104', 'kadar': '0'}  # 4.2.01.01.04
+
+            elif any(kw in name_lower for kw in ['kesehatan', 'health']):
+                print(f"[SIMBA] ✓ Matched name 'kesehatan' (fallback) → Akun: 42010105 (Kas Program Kesehatan), Kadar: 0")
+                return {'akun': '42010105', 'kadar': '0'}  # 4.2.01.01.05
+
+            elif any(kw in name_lower for kw in ['pendidikan', 'beasiswa']):
+                print(f"[SIMBA] ✓ Matched name 'pendidikan' (fallback) → Akun: 42010106 (Kas Program Pendidikan), Kadar: 0")
+                return {'akun': '42010106', 'kadar': '0'}  # 4.2.01.01.06
+
+            elif any(kw in name_lower for kw in ['ekonomi', 'usaha', 'umkm']):
+                print(f"[SIMBA] ✓ Matched name 'ekonomi' (fallback) → Akun: 42010107 (Kas Program Ekonomi), Kadar: 0")
+                return {'akun': '42010107', 'kadar': '0'}  # 4.2.01.01.07
+
+            elif any(kw in name_lower for kw in ['kemanusiaan', 'bencana', 'darurat']):
+                print(f"[SIMBA] ✓ Matched name 'kemanusiaan' (fallback) → Akun: 42010108 (Kas Program Kemanusiaan dan Bencana), Kadar: 0")
+                return {'akun': '42010108', 'kadar': '0'}  # 4.2.01.01.08
+
+            elif any(kw in name_lower for kw in ['solidaritas', 'palestina', 'dunia islam']):
+                print(f"[SIMBA] ✓ Matched name 'solidaritas' (fallback) → Akun: 42010109 (Kas Program Solidaritas Dunia Islam), Kadar: 0")
+                return {'akun': '42010109', 'kadar': '0'}  # 4.2.01.01.09
+
+            # Check terikat (generik) in name
             elif 'terikat' in name_lower:
                 print(f"[SIMBA] ✓ Matched name 'terikat' (fallback) → Akun: 42010101 (Infaq Terikat), Kadar: 0")
                 return {'akun': '42010101', 'kadar': '0'}  # 4.2.01.01.01
