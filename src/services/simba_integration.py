@@ -286,8 +286,9 @@ class SimbaIntegration:
         Returns:
             {'success': True, 'no_transaksi': '...'} atau {'success': False, 'error': '...'}
         """
+        payload = None
+        url = f"{self.base_url}/api/ajax_transaksi_simpan"
         try:
-            url = f"{self.base_url}/api/ajax_transaksi_simpan"
 
             # Determine account_info and program based on campaign data (NEW)
             if campaign_kategori:

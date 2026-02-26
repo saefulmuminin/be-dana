@@ -115,3 +115,4 @@ class Config:
     SIMBA_ACCOUNT_INFAK = os.getenv("SIMBA_ACCOUNT_INFAK", "")
     SIMBA_PROGRAM = os.getenv("SIMBA_PROGRAM", "")
     SIMBA_VIA = os.getenv("SIMBA_VIA", "")
+    SIMBA_KEGIATAN = os.getenv("SIMBA_KEGIATAN", "113019977")
