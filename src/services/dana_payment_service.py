@@ -1433,6 +1433,7 @@ class DanaPaymentService:
                         SELECT
                             t.*,
                             d.campaign_id,
+                            d.no_transaksi,
                             c.name as campaign_name,
                             c.kategori as campaign_kategori,
                             k.name as institution_name,
@@ -1463,7 +1464,7 @@ class DanaPaymentService:
                             d.order_id, d.partner_reference_no, d.dana_reference_no, d.status, 
                             d.nominal as amount, d.tgl_donasi as created_time, 
                             d.dana_paid_at as paid_time,
-                            d.campaign_id, 
+                            d.campaign_id, d.no_transaksi,
                             'DANA' as payment_method,
                             c.name as campaign_name, c.kategori as campaign_kategori,
                             k.name as institution_name, k.kode_institusi,
@@ -1508,6 +1509,7 @@ class DanaPaymentService:
                 "responseMessage": "Success (from local database)",
                 "originalPartnerReferenceNo": transaction.get('partner_reference_no') or transaction.get('order_id'),
                 "originalReferenceNo": transaction.get('dana_reference_no') or transaction.get('order_id'),
+                "no_transaksi": transaction.get('no_transaksi'),
                 "transDateTime": transaction.get('created_time').isoformat() if transaction.get('created_time') else None,
                 "paidTime": transaction.get('paid_time').isoformat() if transaction.get('paid_time') else None,
                 "amount": {
