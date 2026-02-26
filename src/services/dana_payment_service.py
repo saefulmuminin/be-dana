@@ -2446,7 +2446,7 @@ class DanaPaymentService:
             campaign_tipe = None
             campaign_coa = None
             campaign_name = None
-            campaign_program_code = None
+            campaign_kegiatan_code = None
 
             campaign_id = donation.get('campaign_id')
             if campaign_id:
@@ -2458,8 +2458,8 @@ class DanaPaymentService:
                     if campaign:
                         campaign_kategori = campaign.get('kategori')
                         campaign_tipe = campaign.get('tipe')
-                        campaign_name = campaign.get('name')  # NEW: Get campaign name
-                        program_id = campaign.get('program_id')  # Get program_id
+                        campaign_name = campaign.get('name')
+                        program_id = campaign.get('program_id')
 
                         # Get appropriate COA based on tipe
                         if campaign_tipe == 'zakat':
@@ -2467,8 +2467,7 @@ class DanaPaymentService:
                         else:
                             campaign_coa = campaign.get('coa_infak')
 
-                        # Get program code from ref_dana_sosial if program_id exists
-                        campaign_program_code = None
+                        # Ambil kegiatan code dari ref_dana_sosial.code
                         if program_id:
                             try:
                                 conn = self.db.getConnection()
@@ -2477,14 +2476,14 @@ class DanaPaymentService:
                                         "SELECT code FROM ref_dana_sosial WHERE id = %s AND is_delete = 'N'",
                                         (program_id,)
                                     )
-                                    program_row = cursor.fetchone()
-                                    if program_row:
-                                        campaign_program_code = program_row.get('code')
-                                        print(f"[SIMBA] Found program code from ref_dana_sosial: {campaign_program_code}")
+                                    kegiatan_row = cursor.fetchone()
+                                    if kegiatan_row:
+                                        campaign_kegiatan_code = kegiatan_row.get('code')
+                                        print(f"[SIMBA] Found kegiatan code from ref_dana_sosial: {campaign_kegiatan_code}")
                             except Exception as progErr:
-                                print(f"[SIMBA] Error fetching program code: {progErr}")
+                                print(f"[SIMBA] Error fetching kegiatan code: {progErr}")
 
-                        print(f"[SIMBA] Campaign data found - Name: {campaign_name}, Kategori: {campaign_kategori}, Tipe: {campaign_tipe}, COA: {campaign_coa}, Program Code: {campaign_program_code}")
+                        print(f"[SIMBA] Campaign data found - Name: {campaign_name}, Kategori: {campaign_kategori}, Tipe: {campaign_tipe}, COA: {campaign_coa}, Kegiatan Code: {campaign_kegiatan_code}")
                     else:
                         print(f"[SIMBA] Campaign {campaign_id} not found, using legacy mapping")
 
@@ -2501,13 +2500,13 @@ class DanaPaymentService:
                 npwz=npwz,
                 amount=int(donation.get('nominal', 0)),
                 tanggal=tanggal_simba,
-                tipe_zakat=tipe_zakat_simba,  # Legacy support
+                tipe_zakat=tipe_zakat_simba,
                 order_id=donation.get('order_id', ''),
-                campaign_kategori=campaign_kategori,  # NEW
-                campaign_tipe=campaign_tipe,  # NEW
-                campaign_coa=campaign_coa,  # NEW
-                campaign_name=campaign_name,  # NEW: Pass campaign name
-                campaign_program_code=campaign_program_code  # NEW: Pass program code from ref_dana_sosial
+                campaign_kategori=campaign_kategori,
+                campaign_tipe=campaign_tipe,
+                campaign_coa=campaign_coa,
+                campaign_name=campaign_name,
+                campaign_kegiatan_code=campaign_kegiatan_code  # Kegiatan code dari ref_dana_sosial
             )
             
             if save_result.get('success'):
