@@ -348,7 +348,7 @@ class SimbaIntegration:
                 'keterangan': keterangan,
                 'amil': self.amil_email,
                 'kegiatan': kegiatan,
-                'notif': 'false'
+                'notif': 'TRUE'
             }
 
             print(f"[SIMBA] Saving transaction: {order_id}, Amount: {amount}, NPWZ: {npwz}")
