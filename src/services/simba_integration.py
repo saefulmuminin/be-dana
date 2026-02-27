@@ -298,7 +298,7 @@ class SimbaIntegration:
                 program = '0' + cleaned_code
                 print(f"[SIMBA] ✓ Program dari ref_dana_sosial.code: '0' + '{cleaned_code}' = '{program}'")
             elif not program:
-                program = Config.SIMBA_PROGRAM or '113010000'
+                program = Config.SIMBA_PROGRAM or '113019977'
                 print(f"[SIMBA] ✓ Program fallback: {program}")
 
             # via dan akun = COA dari campaign (sama, mengikuti logika PHP)
