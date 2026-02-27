@@ -348,7 +348,7 @@ class SimbaIntegration:
                 'keterangan': keterangan,
                 'amil': self.amil_email,
                 'kegiatan': kegiatan,
-                'notif': 'TRUE'
+                'notif': 'true'
             }
 
             print(f"[SIMBA] Saving transaction: {order_id}, Amount: {amount}, NPWZ: {npwz}")
@@ -374,13 +374,24 @@ class SimbaIntegration:
                 self._logApiCall(url, 'SAVE_TRANSACTION', payload, response_status, {'error': 'Cloudflare Protection'})
                 return {'success': False, 'error': 'Cloudflare Protection'}
 
-            # Parse JSON response
+            # Parse JSON response — SIMBA may prepend PHP notices to valid JSON
             try:
                 result = json.loads(response_text)
             except:
-                print(f"[SIMBA] Invalid JSON response: {response_text[:200]}")
-                self._logApiCall(url, 'SAVE_TRANSACTION', payload, response_status, {'error': 'Invalid JSON', 'raw': response_text[:200]})
-                return {'success': False, 'error': 'Invalid JSON response'}
+                # Try to extract JSON from response that may contain PHP notice HTML prefix
+                json_start = response_text.find('{')
+                if json_start > 0:
+                    try:
+                        result = json.loads(response_text[json_start:])
+                        print(f"[SIMBA] ⚠️ PHP notice detected in response (ignored), JSON extracted successfully")
+                    except:
+                        print(f"[SIMBA] Invalid JSON response: {response_text[:200]}")
+                        self._logApiCall(url, 'SAVE_TRANSACTION', payload, response_status, {'error': 'Invalid JSON', 'raw': response_text[:200]})
+                        return {'success': False, 'error': 'Invalid JSON response'}
+                else:
+                    print(f"[SIMBA] Invalid JSON response: {response_text[:200]}")
+                    self._logApiCall(url, 'SAVE_TRANSACTION', payload, response_status, {'error': 'Invalid JSON', 'raw': response_text[:200]})
+                    return {'success': False, 'error': 'Invalid JSON response'}
 
             # Log API call
             self._logApiCall(url, 'SAVE_TRANSACTION', payload, response_status, result)
