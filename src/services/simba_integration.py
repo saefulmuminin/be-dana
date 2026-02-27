@@ -290,53 +290,36 @@ class SimbaIntegration:
         url = f"{self.base_url}/api/ajax_transaksi_simpan"
         try:
 
-            # Determine account_info and program based on campaign data (NEW)
-            if campaign_kategori:
-                print(f"[SIMBA] Using campaign-based mapping: name={campaign_name}, kategori={campaign_kategori}, tipe={campaign_tipe}, coa={campaign_coa}, kegiatan_code={campaign_kegiatan_code}")
+            print(f"[SIMBA] Campaign data - name={campaign_name}, tipe={campaign_tipe}, coa={campaign_coa}, program_code={campaign_kegiatan_code}")
 
-                # Get account info from campaign kategori (or name as fallback)
-                account_info = self.getKodeAkunByKategori(
-                    kategori=campaign_kategori,
-                    tipe=campaign_tipe or 'infak',
-                    coa_from_campaign=campaign_coa,
-                    campaign_name=campaign_name
-                )
+            # program = '0' + ref_dana_sosial.code (mengikuti logika PHP)
+            if not program and campaign_kegiatan_code:
+                cleaned_code = self._cleanProgramString(campaign_kegiatan_code, 8)
+                program = '0' + cleaned_code
+                print(f"[SIMBA] ✓ Program dari ref_dana_sosial.code: '0' + '{cleaned_code}' = '{program}'")
+            elif not program:
+                program = Config.SIMBA_PROGRAM or '113010000'
+                print(f"[SIMBA] ✓ Program fallback: {program}")
 
-                # Program selalu di-generate dari kategori
-                if not program:
-                    program = self.getKodeProgramByKategori(
-                        kategori=campaign_kategori,
-                        tipe=campaign_tipe or 'infak',
-                        campaign_name=campaign_name
-                    )
-
-                print(f"[SIMBA] Campaign mapping result - Account: {account_info['akun']}, Program: {program}")
+            # via dan akun = COA dari campaign (sama, mengikuti logika PHP)
+            coa = self._cleanAccountString(campaign_coa or '', 8)
+            if not coa:
+                coa = self._cleanAccountString(Config.SIMBA_VIA or '', 8)
+                print(f"[SIMBA] ✓ COA fallback dari Config.SIMBA_VIA: {coa}")
             else:
-                # Fallback to legacy mapping (OLD)
-                print(f"[SIMBA] Using legacy mapping for tipe_zakat: {tipe_zakat}")
-                account_info = self._getFallbackAccountMapping(tipe_zakat)
+                print(f"[SIMBA] ✓ COA dari campaign: {coa}")
 
-                if not program:
-                    program = Config.SIMBA_PROGRAM or '113010000'  # Default program
+            kadar = '2.5' if (campaign_tipe or '').lower() == 'zakat' else '0'
 
-            if not account_info or not account_info.get('akun'):
-                print(f"[SIMBA] No account mapping found")
-                return {'success': False, 'error': 'No account mapping'}
-
-            # Use SIMBA_VIA config (kas/debet account), fallback to account if not set
-            if not via:
-                via = Config.SIMBA_VIA or account_info['akun']
-
-            # Kegiatan code hardcoded
+            # Kegiatan hardcoded
             kegiatan = '113019977'
-            print(f"[SIMBA] ✓ Kegiatan hardcoded: {kegiatan}")
 
-            # Validate and clean field lengths to match SIMBA requirements
+            # Validate and clean
             program = self._cleanProgramString(program, 9)  # Must be 9 digits
-            via = self._cleanAccountString(via, 8)  # Must be 8 digits
-            account_info['akun'] = self._cleanAccountString(account_info['akun'], 8)  # Must be 8 digits
+            via = coa
+            akun = coa
 
-            print(f"[SIMBA] Final mapping - Account: {account_info['akun']}, Program: {program}, Via: {via}, Kegiatan: {kegiatan}")
+            print(f"[SIMBA] Final mapping - Akun: {akun}, Program: {program}, Via: {via}, Kadar: {kadar}, Kegiatan: {kegiatan}")
 
             # Final validation
             if len(program) != 9:
@@ -345,9 +328,9 @@ class SimbaIntegration:
             if len(via) != 8:
                 print(f"[SIMBA] ⚠️  Via code invalid: '{via}' (expected 8 digits, got {len(via)})")
                 return {'success': False, 'error': f'Via code must be 8 digits, got {len(via)}'}
-            if len(account_info['akun']) != 8:
-                print(f"[SIMBA] ⚠️  Account code invalid: '{account_info['akun']}' (expected 8 digits, got {len(account_info['akun'])})")
-                return {'success': False, 'error': f'Account code must be 8 digits, got {len(account_info["akun"])}'}
+            if len(akun) != 8:
+                print(f"[SIMBA] ⚠️  Account code invalid: '{akun}' (expected 8 digits, got {len(akun)})")
+                return {'success': False, 'error': f'Account code must be 8 digits, got {len(akun)}'}
 
             keterangan = f"payment{order_id}"
 
@@ -359,17 +342,14 @@ class SimbaIntegration:
                 'divisi': self.divisi,
                 'program': program,
                 'via': via,
-                'akun': account_info['akun'],
+                'akun': akun,
                 'jumlah': str(amount),
-                'kadar': account_info['kadar'],
+                'kadar': kadar,
                 'keterangan': keterangan,
                 'amil': self.amil_email,
-                'notif': 'false'  # Required field to prevent server error
+                'kegiatan': kegiatan,
+                'notif': 'false'
             }
-
-            # Tambahkan kegiatan jika tersedia
-            if kegiatan:
-                payload['kegiatan'] = kegiatan
 
             print(f"[SIMBA] Saving transaction: {order_id}, Amount: {amount}, NPWZ: {npwz}")
 
