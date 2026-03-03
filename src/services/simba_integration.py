@@ -312,7 +312,7 @@ class SimbaIntegration:
             kadar = '2.5' if (campaign_tipe or '').lower() == 'zakat' else '0'
 
             # Kegiatan hardcoded
-            kegiatan = '113019977'
+            kegiatan = '113999900'
 
             # Validate and clean
             program = self._cleanProgramString(program, 9)  # Must be 9 digits
