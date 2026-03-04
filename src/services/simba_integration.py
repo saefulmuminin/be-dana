@@ -301,13 +301,21 @@ class SimbaIntegration:
                 program = Config.SIMBA_PROGRAM or '113019977'
                 print(f"[SIMBA] ✓ Program fallback: {program}")
 
-            # via dan akun = COA dari campaign (sama, mengikuti logika PHP)
-            coa = self._cleanAccountString(campaign_coa or '', 8)
-            if not coa:
-                coa = self._cleanAccountString(Config.SIMBA_VIA or '', 8)
-                print(f"[SIMBA] ✓ COA fallback dari Config.SIMBA_VIA: {coa}")
+            # akun = COA dari campaign (akun penerimaan zakat/infak)
+            akun = self._cleanAccountString(campaign_coa or '', 8)
+            if not akun:
+                akun = self._cleanAccountString(Config.SIMBA_VIA or '', 8)
+                print(f"[SIMBA] ✓ Akun fallback dari Config.SIMBA_VIA: {akun}")
             else:
-                print(f"[SIMBA] ✓ COA dari campaign: {coa}")
+                print(f"[SIMBA] ✓ Akun penerimaan dari campaign COA: {akun}")
+
+            # via = akun KAS/payment channel (selalu dari Config.SIMBA_VIA, berbeda dari akun)
+            via = self._cleanAccountString(Config.SIMBA_VIA or '', 8)
+            if not via:
+                via = akun
+                print(f"[SIMBA] ⚠️ SIMBA_VIA tidak dikonfigurasi, via fallback ke akun: {via}")
+            else:
+                print(f"[SIMBA] ✓ Via (kas DANA) dari Config.SIMBA_VIA: {via}")
 
             kadar = '2.5' if (campaign_tipe or '').lower() == 'zakat' else '0'
 
@@ -316,8 +324,6 @@ class SimbaIntegration:
 
             # Validate and clean
             program = self._cleanProgramString(program, 9)  # Must be 9 digits
-            via = coa
-            akun = coa
 
             print(f"[SIMBA] Final mapping - Akun: {akun}, Program: {program}, Via: {via}, Kadar: {kadar}, Kegiatan: {kegiatan}")
 
